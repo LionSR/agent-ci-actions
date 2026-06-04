@@ -1,0 +1,45 @@
+name: Test actions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint action definitions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download actionlint
+        id: actionlint
+        run: bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Run actionlint
+        run: ${{ steps.actionlint.outputs.executable }} -color
+
+  preset-resolver:
+    name: allowed_tools_preset_map resolver
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve presets exactly like the action does
+        run: |
+          set -euo pipefail
+          map='{"my-fix":"Edit,Read,Bash(make *)","review":"Read,Bash(gh pr diff *)"}'
+
+          got="$(printf '%s' "$map" | jq -er --arg k my-fix '.[$k]')"
+          [ "$got" = "Edit,Read,Bash(make *)" ] || { echo "wrong value: $got"; exit 1; }
+
+          got="$(printf '%s' "$map" | jq -er --arg k review '.[$k]')"
+          [ "$got" = "Read,Bash(gh pr diff *)" ] || { echo "wrong value: $got"; exit 1; }
+
+          # Unknown preset must fail (the action turns this into a hard error).
+          if printf '%s' "$map" | jq -er --arg k nope '.[$k]' >/dev/null 2>&1; then
+            echo "unknown preset should have failed"; exit 1
+          fi
+
+          echo "preset resolver OK"

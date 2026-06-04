@@ -180,6 +180,15 @@ runs:
           } >> "$GITHUB_OUTPUT"
         }
 
+        # Append a token to claude_args on its own line, inserting a separating
+        # newline only when claude_args already holds something.
+        append_claude_arg() {
+          if [ -n "$claude_args" ]; then
+            claude_args="${claude_args}"$'\n'
+          fi
+          claude_args="${claude_args}$1"
+        }
+
         provider="$INPUT_PROVIDER"
         provider="${provider,,}"
         provider="${provider:-anthropic}"
@@ -205,10 +214,8 @@ runs:
         anthropic_api_key=""
 
         if [ "$provider" = "deepseek" ]; then
+          # deepseek_api_key_input already folds in the DEEPSEEK_API_KEY env fallback.
           token="$deepseek_api_key_input"
-          if [ -z "$token" ]; then
-            token="${DEEPSEEK_API_KEY-}"
-          fi
           anthropic_api_key="$token"
 
           model_opus="$INPUT_DEEPSEEK_OPUS_MODEL"
@@ -338,16 +345,10 @@ runs:
         append_system_prompt=''
         if [ -n "$system_prompt" ] && ! printf '%s\n' "$claude_args" | grep -q -- '--append-system-prompt'; then
           append_system_prompt="$system_prompt"
-          if [ -n "$claude_args" ]; then
-            claude_args="${claude_args}"$'\n'
-          fi
-          claude_args="${claude_args}--append-system-prompt \"${append_system_prompt}\""
+          append_claude_arg "--append-system-prompt \"${append_system_prompt}\""
         fi
         if [ -n "$allowed_tools" ] && ! printf '%s\n' "$claude_args" | grep -q -- '--allowedTools'; then
-          if [ -n "$claude_args" ]; then
-            claude_args="${claude_args}"$'\n'
-          fi
-          claude_args="${claude_args}--allowedTools \"${allowed_tools}\""
+          append_claude_arg "--allowedTools \"${allowed_tools}\""
         fi
 
         case "$model_tier" in

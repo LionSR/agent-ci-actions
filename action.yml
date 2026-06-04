@@ -1,5 +1,5 @@
 name: 'Claude Code Multi-Provider Runner'
-description: 'Run Claude Code against Anthropic, DeepSeek, or any Anthropic-compatible provider, with model-tier and a caller-supplied tool-preset map.'
+description: 'Run Claude Code on Anthropic, DeepSeek, Kimi or any compatible provider, with model-tier and caller-supplied tool presets.'
 
 branding:
   icon: cpu
@@ -72,6 +72,10 @@ inputs:
     default: ''
   allowed_tools_preset_map:
     description: 'Caller-supplied JSON object mapping preset names to --allowedTools strings, e.g. {"my-fix":"Edit,Read,Bash(make *)"}. The action ships no presets of its own.'
+    required: false
+    default: ''
+  allowed_tools_preset_map_file:
+    description: 'Path to a JSON file holding the preset map (used when allowed_tools_preset_map is empty), e.g. .github/allowed-tools.json.'
     required: false
     default: ''
 
@@ -163,6 +167,7 @@ runs:
         INPUT_ALLOWED_TOOLS: ${{ inputs.allowed_tools }}
         INPUT_ALLOWED_TOOLS_PRESET: ${{ inputs.allowed_tools_preset }}
         INPUT_ALLOWED_TOOLS_PRESET_MAP: ${{ inputs.allowed_tools_preset_map }}
+        INPUT_ALLOWED_TOOLS_PRESET_MAP_FILE: ${{ inputs.allowed_tools_preset_map_file }}
         INPUT_SYSTEM_PROMPT: ${{ inputs['system-prompt'] }}
         INPUT_SYSTEM_PROMPT_FILE: ${{ inputs['system-prompt-file'] }}
         INPUT_CLAUDE_ARGS: ${{ inputs.claude_args }}
@@ -284,6 +289,13 @@ runs:
         allowed_tools="$INPUT_ALLOWED_TOOLS"
         allowed_tools_preset="$INPUT_ALLOWED_TOOLS_PRESET"
         preset_map="$INPUT_ALLOWED_TOOLS_PRESET_MAP"
+        if [ -z "$preset_map" ] && [ -n "$INPUT_ALLOWED_TOOLS_PRESET_MAP_FILE" ]; then
+          if [ ! -f "$INPUT_ALLOWED_TOOLS_PRESET_MAP_FILE" ]; then
+            echo "::error::allowed_tools_preset_map_file not found: ${INPUT_ALLOWED_TOOLS_PRESET_MAP_FILE}"
+            exit 1
+          fi
+          preset_map="$(cat "$INPUT_ALLOWED_TOOLS_PRESET_MAP_FILE")"
+        fi
         if [ -z "$allowed_tools" ] && [ -n "$allowed_tools_preset" ]; then
           if [ -z "$preset_map" ]; then
             echo "::error::allowed_tools_preset='${allowed_tools_preset}' was given but allowed_tools_preset_map is empty. Pass a JSON map of preset names to --allowedTools strings."

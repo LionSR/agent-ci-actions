@@ -42,4 +42,9 @@ jobs:
             echo "unknown preset should have failed"; exit 1
           fi
 
+          # File-backed map (allowed_tools_preset_map_file): cat then the same jq.
+          printf '%s' "$map" > "$RUNNER_TEMP/allowed-tools.json"
+          got="$(cat "$RUNNER_TEMP/allowed-tools.json" | jq -er --arg k my-fix '.[$k]')"
+          [ "$got" = "Edit,Read,Bash(make *)" ] || { echo "file map wrong: $got"; exit 1; }
+
           echo "preset resolver OK"

@@ -1,15 +1,25 @@
 # agent-ci-actions
 
-Reusable GitHub Actions for running **Claude Code** across providers and for
-building **CI auto-fix** automation. Domain-agnostic: no project-specific tool
-allowlists are baked in — you supply them.
+Run **Claude Code in CI across providers** — Anthropic, **DeepSeek**, **Kimi (Moonshot)**,
+or any Anthropic-compatible endpoint — and wire up **self-healing auto-fix** loops.
+Domain-agnostic: no project-specific tool allowlists are baked in; you supply them.
 
-Extracted and de-duplicated from several private repositories so there is one
-maintained source of truth.
+De-duplicated from several private repositories into one maintained source of truth.
+
+## Why
+
+- **Provider choice.** One token swap runs the same agent on Anthropic, DeepSeek, or
+  Kimi — pick by cost, context window, or availability without rewriting workflows.
+- **Auto-fix.** Turn a red CI run into an agent that reads the failure, pushes a fix,
+  and lets CI re-run — bounded by an iteration cap so it never loops forever.
+- **No lock-in to one project.** Tool allowlists ("presets") are caller-supplied JSON,
+  so the same actions serve a Lean repo, a TypeScript repo, or anything else.
+
+## Actions
 
 | Action | Reference | What it does |
 | --- | --- | --- |
-| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / any Anthropic-compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
+| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / Kimi / any compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
 | **Compose auto-fix prompt** | `LionSR/agent-ci-actions/compose-auto-fix-prompt@v1` | Load a prompt, append CI-failure + PR context, expose as one output. |
 | **Auto-create PR for issue work** | `LionSR/agent-ci-actions/auto-create-issue-pr@v1` | Open a PR from a bot-pushed issue branch; optionally add an auto-fix label. |
 | **Fetch failure logs** | `LionSR/agent-ci-actions/fetch-failure-logs@v1` | Download + sanitize failed-job logs from a workflow run. |
@@ -17,58 +27,94 @@ maintained source of truth.
 | **Attach PR branch** | `LionSR/agent-ci-actions/attach-pr-branch@v1` | Resolve and check out a PR head branch. |
 | **Bot-fix guard** | `LionSR/agent-ci-actions/bot-fix-guard@v1` | Count prior bot-fix commits to cap auto-fix loops. |
 
-Each action is self-contained — use the one you need, or compose them.
+## Providers
 
-## Claude Code Multi-Provider Runner
-
-Wraps [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action):
-picks the provider, resolves the model for the requested `model-tier`, and applies
-`--allowedTools`.
+The runner wraps [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action)
+and talks to any **Anthropic-compatible** API.
 
 ```yaml
+# Anthropic (default)
 - uses: LionSR/agent-ci-actions@v1
   with:
-    provider: anthropic           # or "deepseek"
-    model-tier: opus              # or "sonnet"
+    provider: anthropic
     claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    model-tier: opus            # -> claude-opus-model (default claude-opus-4-8)
     prompt: 'Fix the failing build.'
 ```
 
-### Tool presets are caller-supplied
+```yaml
+# DeepSeek (built-in convenience: default base URL + model)
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: deepseek
+    deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+    prompt: 'Fix the failing build.'
+```
 
-The action ships **no** tool allowlists. Pass a JSON map and reference its keys —
-keep the map in your own repo (a `vars.*` value or a checked-in `.github/allowed-tools.json`):
+```yaml
+# Kimi / Moonshot — or any Anthropic-compatible endpoint — via base-url override
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: anthropic
+    anthropic-base-url: https://api.moonshot.ai/anthropic
+    anthropic-api-key: ${{ secrets.MOONSHOT_API_KEY }}
+    claude-opus-model: kimi-k2-0905-preview   # the model for the opus tier
+    prompt: 'Fix the failing build.'
+```
+
+`model-tier` (`opus` / `sonnet`) picks between the opus- and sonnet-tier model inputs,
+so one workflow can dial cost/quality per call. Tokens and model names also fall back to
+the matching env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `DEEPSEEK_API_KEY`, `CLAUDE_OPUS_MODEL`, …).
+
+## Tool presets are caller-supplied
+
+The action ships **no** tool allowlists. Keep your presets in a checked-in JSON file and
+point the action at it:
+
+```jsonc
+// .github/allowed-tools.json
+{
+  "auto-fix":  "Edit,Write,Read,Glob,Grep,Bash(make *),Bash(git add *),Bash(git commit *),mcp__github__*",
+  "review":    "Read,Glob,Grep,Bash(gh pr diff *),mcp__github__*"
+}
+```
 
 ```yaml
 - uses: LionSR/agent-ci-actions@v1
   with:
-    allowed_tools_preset: my-fix
-    allowed_tools_preset_map: |
-      {
-        "my-fix": "Edit,Write,Read,Glob,Grep,Bash(make *),Bash(git add *),Bash(git commit *),mcp__github__*",
-        "review": "Read,Glob,Grep,Bash(gh pr diff *),mcp__github__*"
-      }
+    allowed_tools_preset: auto-fix
+    allowed_tools_preset_map_file: .github/allowed-tools.json
 ```
 
-Resolution precedence: explicit `allowed_tools` → `allowed_tools_preset_map[allowed_tools_preset]`
-→ `CLAUDE_ALLOWED_TOOLS` env → empty. An unknown preset against a non-empty map is a hard error.
+Resolution precedence: explicit `allowed_tools` → preset looked up in
+`allowed_tools_preset_map` (inline JSON) or `allowed_tools_preset_map_file` →
+`CLAUDE_ALLOWED_TOOLS` env → empty. An unknown preset against a non-empty map is a hard error.
 
-Key inputs (all optional unless noted; model/token inputs also read the matching env var):
+## Auto-fix loop
 
-| Input | Default | Notes |
-| --- | --- | --- |
-| `provider` | `anthropic` | `anthropic` or `deepseek`. |
-| `model-tier` | `opus` | `opus` or `sonnet`. |
-| `claude-opus-model` / `claude-sonnet-model` | `claude-opus-4-8` / `claude-sonnet-4-6` | Override per shop; env `CLAUDE_OPUS_MODEL` etc. also honored. |
-| `allowed_tools` | `''` | Explicit `--allowedTools`; wins over a preset. |
-| `allowed_tools_preset` / `allowed_tools_preset_map` | `''` | Preset key + the caller's JSON map. |
-| `prompt` / `claude-prompt-file` | `''` | Prompt text or a file path. |
-| `system-prompt` / `system-prompt-file` | `''` | Appended via `--append-system-prompt`. |
-| `plugins` / `plugin_marketplaces` | `''` | Forwarded to claude-code-action. |
+The supporting actions compose a bounded self-healing loop: a failed CI run drives an
+agent that reads the failure, pushes a fix, and lets CI re-run — capped by `bot-fix-guard`.
+
+```mermaid
+flowchart TD
+    A[CI fails on a PR] --> B{bot-fix-guard:<br/>under the iteration cap?}
+    B -- no --> Z[Stop — hand back to a human]
+    B -- yes --> C[fetch-failure-logs:<br/>collect failed-job output]
+    C --> D[compose-auto-fix-prompt:<br/>prompt + PR + failure context]
+    D --> E[Claude Code Multi-Provider Runner:<br/>Anthropic / DeepSeek / Kimi]
+    E --> F[Agent edits and pushes a fix commit]
+    F --> G[CI re-runs]
+    G -- still red --> A
+    G -- green --> H([Done])
+```
+
+`bot-fix-guard` counts prior bot-fix commits so the loop is bounded; `fetch-failure-logs`
+sanitizes the logs (treat them as untrusted data); `compose-auto-fix-prompt` folds the
+failure context into the prompt; the runner executes the fix on your chosen provider.
 
 ## Versioning
 
-Pin `@v1` to track `v1.x`, or a tag / full SHA for strict reproducibility.
+Pin `@v1` to track `v1.x`, or a specific tag for strict reproducibility.
 
 ## License
 

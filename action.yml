@@ -177,7 +177,8 @@ runs:
         write_output() {
           local name="$1"
           local value="$2"
-          local delimiter="__${name}_$(date +%s%N)__"
+          local delimiter
+          delimiter="__${name}_$(date +%s%N)__"
           {
             printf '%s<<%s\n' "$name" "$delimiter"
             printf '%s\n' "$value"

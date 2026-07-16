@@ -24,6 +24,15 @@ on:
         type: boolean
         default: false
         description: Whether to set up the Lean toolchain before running Claude
+      use_github_cache:
+        required: false
+        type: boolean
+        default: true
+        description: >
+          Whether the Lean setup saves/restores a GitHub cache of .lake.
+          Repositories that manage their own build cache should pass
+          false; the default saves a multi-gigabyte entry per run, which
+          can evict the caller's caches from the 10 GB repository budget.
       claude-prompt:
         required: false
         type: string
@@ -110,6 +119,8 @@ jobs:
       - name: Set up Lean toolchain and cache
         if: inputs.setup_lean && steps.loop_guard.outputs.skip != 'true'
         uses: texra-ai/lean-env-action@v1
+        with:
+          use-github-cache: ${{ inputs.use_github_cache }}
 
       - name: Get CI failure details
         if: steps.loop_guard.outputs.skip != 'true'

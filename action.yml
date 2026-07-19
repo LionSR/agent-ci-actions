@@ -256,7 +256,7 @@ runs:
 
           model_sonnet="$INPUT_CLAUDE_SONNET_MODEL"
           if [ -z "$model_sonnet" ]; then
-            model_sonnet="${CLAUDE_SONNET_MODEL:-claude-sonnet-4-6}"
+            model_sonnet="${CLAUDE_SONNET_MODEL:-claude-sonnet-5}"
           fi
 
           base_url="$INPUT_ANTHROPIC_BASE_URL"

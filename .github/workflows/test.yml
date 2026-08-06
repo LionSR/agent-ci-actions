@@ -52,7 +52,7 @@ jobs:
           echo "preset resolver OK"
 
   provider-resolver:
-    name: kimi / deepseek provider defaults
+    name: kimi / kimi-code / deepseek / zai provider defaults
     runs-on: ubuntu-latest
     steps:
       - name: Resolve provider defaults like the action does
@@ -111,6 +111,57 @@ jobs:
           # Coding model also uses the 256K compact window.
           got="$(resolve_kimi kimi opus kimi-k2.7-code kimi-k2.7-code)"
           [ "$got" = "kimi kimi-k2.7-code 262144" ] || { echo "k2.7-code compact: $got"; exit 1; }
+
+          # Kimi Code subscription defaults:
+          # https://www.kimi.com/code/docs/en/third-party-tools/claude-code
+          resolve_kimi_code() {
+            local provider="${1:-kimi-code}"
+            local model_tier="${2:-opus}"
+            local model_opus="${3:-k3[1m]}"
+            local model_sonnet="${4:-k3[1m]}"
+            local model_name
+
+            provider="${provider,,}"
+            case "$provider" in
+              kimicode|kimi_code|kimi-coding) provider="kimi-code" ;;
+            esac
+            [ "$provider" = "kimi-code" ] || { echo "expected kimi-code, got $provider"; return 1; }
+
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+
+            local auto_compact
+            case "$model_name" in
+              *'[1m]'*) auto_compact="1048576" ;;
+              *) auto_compact="262144" ;;
+            esac
+
+            printf '%s %s %s %s\n' "$provider" "$model_name" "$auto_compact" "api_key"
+          }
+
+          # Default k3[1m] against the subscription endpoint, api-key auth.
+          got="$(resolve_kimi_code kimi-code opus)"
+          [ "$got" = "kimi-code k3[1m] 1048576 api_key" ] || {
+            echo "kimi-code default: $got"; exit 1
+          }
+
+          got="$(resolve_kimi_code kimicode opus)"
+          [ "$got" = "kimi-code k3[1m] 1048576 api_key" ] || {
+            echo "kimicode alias: $got"; exit 1
+          }
+
+          # 256K ids fall back to the smaller window rather than overflowing.
+          got="$(resolve_kimi_code kimi-code opus k3-256k k3-256k)"
+          [ "$got" = "kimi-code k3-256k 262144 api_key" ] || {
+            echo "kimi-code k3-256k: $got"; exit 1
+          }
+
+          got="$(resolve_kimi_code kimi-code sonnet 'k3[1m]' kimi-for-coding)"
+          [ "$got" = "kimi-code kimi-for-coding 262144 api_key" ] || {
+            echo "kimi-code sonnet tier: $got"; exit 1
+          }
 
           # DeepSeek Claude Code defaults:
           # https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/

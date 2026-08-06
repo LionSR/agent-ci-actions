@@ -112,4 +112,30 @@ jobs:
           got="$(resolve_kimi kimi opus kimi-k2.7-code kimi-k2.7-code)"
           [ "$got" = "kimi kimi-k2.7-code 262144" ] || { echo "k2.7-code compact: $got"; exit 1; }
 
+          # DeepSeek Claude Code defaults:
+          # https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/
+          resolve_deepseek() {
+            local model_tier="${1:-opus}"
+            local model_opus="${2:-deepseek-v4-pro[1m]}"
+            local model_sonnet="${3:-deepseek-v4-pro[1m]}"
+            local model_flash="${4:-deepseek-v4-flash}"
+            local model_name
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+            # haiku + subagent always flash per the guide
+            printf '%s %s %s\n' "$model_name" "$model_flash" "$model_flash"
+          }
+
+          got="$(resolve_deepseek opus)"
+          [ "$got" = "deepseek-v4-pro[1m] deepseek-v4-flash deepseek-v4-flash" ] || {
+            echo "deepseek default: $got"; exit 1
+          }
+
+          got="$(resolve_deepseek sonnet deepseek-v4-pro[1m] deepseek-v4-flash)"
+          [ "$got" = "deepseek-v4-flash deepseek-v4-flash deepseek-v4-flash" ] || {
+            echo "deepseek sonnet=flash: $got"; exit 1
+          }
+
           echo "provider resolver OK"

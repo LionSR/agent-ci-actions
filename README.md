@@ -43,11 +43,13 @@ and talks to any **Anthropic-compatible** API.
 ```
 
 ```yaml
-# DeepSeek (built-in convenience: default base URL + model)
+# DeepSeek (see https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/)
 - uses: LionSR/agent-ci-actions@v1
   with:
     provider: deepseek
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+    # defaults: base https://api.deepseek.com/anthropic,
+    # model deepseek-v4-pro[1m]; haiku/subagent → deepseek-v4-flash
     prompt: 'Fix the failing build.'
 ```
 
@@ -78,11 +80,33 @@ so one workflow can dial cost/quality per call. Tokens and model names also fall
 the matching env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `DEEPSEEK_API_KEY`, `KIMI_API_KEY` /
 `MOONSHOT_API_KEY` / `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_OPUS_MODEL`, `KIMI_OPUS_MODEL`, …).
 
-For `provider: kimi` the action also sets the Claude Code env vars Kimi requires
-(`ANTHROPIC_AUTH_TOKEN`, all `ANTHROPIC_DEFAULT_*_MODEL` tiers,
-`CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
-`CLAUDE_CODE_EFFORT_LEVEL=max`) so background and sub-agent calls do not fall back to
-Anthropic model names.
+For `provider: deepseek` and `provider: kimi` the action sets the Claude Code env vars
+those guides require (`ANTHROPIC_AUTH_TOKEN`, all `ANTHROPIC_DEFAULT_*_MODEL` tiers,
+`CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EFFORT_LEVEL=max`, plus auto-compact where
+needed) so background and sub-agent calls do not fall back to Anthropic model names.
+
+### DeepSeek models (Claude Code)
+
+IDs from the [DeepSeek Claude Code guide](https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/)
+and [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing) (both have 1M context):
+
+| Role | Model | Notes |
+| --- | --- | --- |
+| Main / opus / sonnet default | `deepseek-v4-pro[1m]` | **Default** for `--model` and opus/sonnet tiers |
+| Haiku / sub-agent | `deepseek-v4-flash` | Cheaper; set via `deepseek-flash-model` |
+
+Claude Desktop/Code also map `claude-opus*` → pro and `claude-sonnet*` / `claude-haiku*` → flash when you only change base URL + key.
+
+```yaml
+# Cheaper CI: run the sonnet tier on flash
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: deepseek
+    deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+    model-tier: sonnet
+    deepseek-sonnet-model: deepseek-v4-flash
+    prompt: 'Fix the failing build.'
+```
 
 ### Kimi models (Claude Code)
 

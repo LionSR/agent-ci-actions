@@ -58,11 +58,21 @@ inputs:
     required: false
     default: ''
   deepseek-opus-model:
-    description: 'DeepSeek model name for Opus-tier runs'
+    description: >-
+      DeepSeek model for Opus-tier runs. Default deepseek-v4-pro[1m] per
+      https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/
     required: false
     default: ''
   deepseek-sonnet-model:
-    description: 'DeepSeek model name for Sonnet-tier runs'
+    description: >-
+      DeepSeek model for Sonnet-tier runs. Default deepseek-v4-pro[1m]; set to
+      deepseek-v4-flash for cheaper/faster CI.
+    required: false
+    default: ''
+  deepseek-flash-model:
+    description: >-
+      DeepSeek model for Haiku-tier and sub-agent work. Default deepseek-v4-flash
+      per the DeepSeek Claude Code guide.
     required: false
     default: ''
   kimi-opus-model:
@@ -180,6 +190,7 @@ runs:
         INPUT_CLAUDE_SONNET_MODEL: ${{ inputs['claude-sonnet-model'] }}
         INPUT_DEEPSEEK_OPUS_MODEL: ${{ inputs['deepseek-opus-model'] }}
         INPUT_DEEPSEEK_SONNET_MODEL: ${{ inputs['deepseek-sonnet-model'] }}
+        INPUT_DEEPSEEK_FLASH_MODEL: ${{ inputs['deepseek-flash-model'] }}
         INPUT_KIMI_OPUS_MODEL: ${{ inputs['kimi-opus-model'] }}
         INPUT_KIMI_SONNET_MODEL: ${{ inputs['kimi-sonnet-model'] }}
         INPUT_MODEL_TIER: ${{ inputs['model-tier'] }}
@@ -263,20 +274,26 @@ runs:
 
         claude_code_oauth_token=""
         anthropic_api_key=""
-        # Kimi authenticates with ANTHROPIC_AUTH_TOKEN (Bearer). Keep
-        # ANTHROPIC_API_KEY out of the subprocess env when using kimi — the two
-        # conflict per https://platform.kimi.ai/docs/guide/claude-code-kimi.
+        # DeepSeek and Kimi authenticate with ANTHROPIC_AUTH_TOKEN (Bearer). Keep
+        # ANTHROPIC_API_KEY out of the subprocess env for those providers — the
+        # two conflict. See DeepSeek / Kimi Claude Code guides.
         anthropic_api_key_env=""
         anthropic_auth_token=""
         anthropic_custom_headers=""
         auto_compact_window=""
         effort_level=""
+        use_auth_token="false"
+        model_flash=""
 
         if [ "$provider" = "deepseek" ]; then
           # deepseek_api_key_input already folds in the DEEPSEEK_API_KEY env fallback.
           token="$deepseek_api_key_input"
+          # Satisfy claude-code-action validation; real auth is AUTH_TOKEN.
+          # https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/
           anthropic_api_key="$token"
-          anthropic_api_key_env="$token"
+          anthropic_auth_token="$token"
+          anthropic_custom_headers="Authorization: Bearer ${token}"
+          use_auth_token="true"
 
           model_opus="$INPUT_DEEPSEEK_OPUS_MODEL"
           if [ -z "$model_opus" ]; then
@@ -288,10 +305,17 @@ runs:
             model_sonnet="${DEEPSEEK_SONNET_MODEL:-deepseek-v4-pro[1m]}"
           fi
 
+          model_flash="$INPUT_DEEPSEEK_FLASH_MODEL"
+          if [ -z "$model_flash" ]; then
+            model_flash="${DEEPSEEK_FLASH_MODEL:-deepseek-v4-flash}"
+          fi
+
           base_url="$INPUT_DEEPSEEK_BASE_URL"
           if [ -z "$base_url" ]; then
             base_url="${DEEPSEEK_BASE_URL:-https://api.deepseek.com/anthropic}"
           fi
+
+          effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
         elif [ "$provider" = "kimi" ]; then
           token="$kimi_api_key_input"
           # Satisfy anthropics/claude-code-action validation (requires
@@ -299,6 +323,7 @@ runs:
           anthropic_api_key="$token"
           anthropic_auth_token="$token"
           anthropic_custom_headers="Authorization: Bearer ${token}"
+          use_auth_token="true"
 
           model_opus="$INPUT_KIMI_OPUS_MODEL"
           if [ -z "$model_opus" ]; then
@@ -454,16 +479,24 @@ runs:
             ;;
         esac
 
-        # Kimi: fill every Claude Code model-tier env so background/sub-agent
-        # calls don't fall back to Anthropic model names the endpoint rejects.
-        # Compact window must match the model context (1M for kimi-k3, 256K for
-        # kimi-k2.7-code / kimi-k2.6). See platform.kimi.ai Claude Code guide.
+        # DeepSeek / Kimi: fill every Claude Code model-tier env so background
+        # and sub-agent calls don't fall back to Anthropic model names the
+        # endpoint rejects. Auth is ANTHROPIC_AUTH_TOKEN (Bearer).
         default_opus_model=""
         default_sonnet_model=""
         default_haiku_model=""
         default_fable_model=""
         subagent_model=""
-        if [ "$provider" = "kimi" ]; then
+        if [ "$provider" = "deepseek" ]; then
+          # https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/
+          default_opus_model="$model_opus"
+          default_sonnet_model="$model_sonnet"
+          default_haiku_model="$model_flash"
+          default_fable_model="$model_flash"
+          subagent_model="$model_flash"
+          auto_compact_window="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-1048576}"
+        elif [ "$provider" = "kimi" ]; then
+          # https://platform.kimi.ai/docs/guide/claude-code-kimi
           default_opus_model="$model_opus"
           default_sonnet_model="$model_sonnet"
           default_haiku_model="$model"
@@ -489,6 +522,7 @@ runs:
         write_output anthropic_api_key_env "$anthropic_api_key_env"
         write_output anthropic_auth_token "$anthropic_auth_token"
         write_output anthropic_custom_headers "$anthropic_custom_headers"
+        write_output use_auth_token "$use_auth_token"
         write_output base_url "$base_url"
         write_output model "$model"
         write_output model_tier "$model_tier"
@@ -529,7 +563,7 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Run Claude Code
-      if: steps.resolve.outputs.provider != 'kimi'
+      if: steps.resolve.outputs.use_auth_token != 'true'
       uses: anthropics/claude-code-action@v1
       env:
         ANTHROPIC_BASE_URL: ${{ steps.resolve.outputs.base_url }}
@@ -549,11 +583,11 @@ runs:
           --model ${{ steps.resolve.outputs.model }}
           ${{ steps.resolve.outputs.claude_args }}
 
-    # Kimi needs ANTHROPIC_AUTH_TOKEN (+ Bearer header) and every model-tier
-    # env filled so sub-agents don't request Anthropic model names. Kept as a
-    # separate step so those vars are never set empty for other providers.
-    - name: Run Claude Code (Kimi)
-      if: steps.resolve.outputs.provider == 'kimi'
+    # DeepSeek / Kimi need ANTHROPIC_AUTH_TOKEN (+ Bearer header) and every
+    # model-tier env filled so sub-agents don't request Anthropic model names.
+    # Kept as a separate step so those vars are never set empty for Anthropic.
+    - name: Run Claude Code (compatible provider)
+      if: steps.resolve.outputs.use_auth_token == 'true'
       uses: anthropics/claude-code-action@v1
       env:
         ANTHROPIC_BASE_URL: ${{ steps.resolve.outputs.base_url }}

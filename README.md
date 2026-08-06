@@ -1,8 +1,8 @@
 # agent-ci-actions
 
-Run **Claude Code in CI across providers** — Anthropic, **DeepSeek**, **Kimi (Moonshot)**,
-**Kimi Code**, **Z.AI (GLM)**, or any Anthropic-compatible endpoint — and wire up
-**self-healing auto-fix** loops. Works with both pay-per-token API keys and coding-plan
+Run **Claude Code in CI across providers** — Anthropic, **DeepSeek**, **Kimi**,
+**Z.AI (GLM)**, or any Anthropic-compatible endpoint — and wire up **self-healing
+auto-fix** loops. Works with both pay-per-token API keys and coding-plan
 subscriptions. Domain-agnostic: no project-specific tool allowlists are baked in; you
 supply them.
 
@@ -11,8 +11,8 @@ De-duplicated from several private repositories into one maintained source of tr
 ## Why
 
 - **Provider choice.** One token swap runs the same agent on Anthropic, DeepSeek, Kimi,
-  Kimi Code, or Z.AI — pick by cost, context window, or availability without rewriting
-  workflows, and pay by token or against a coding-plan subscription.
+  or Z.AI — pick by cost, context window, or availability without rewriting workflows,
+  and pay by token or against a coding-plan subscription.
 - **Auto-fix.** Turn a red CI run into an agent that reads the failure, pushes a fix,
   and lets CI re-run — bounded by an iteration cap so it never loops forever.
 - **No lock-in to one project.** Tool allowlists ("presets") are caller-supplied JSON,
@@ -22,7 +22,7 @@ De-duplicated from several private repositories into one maintained source of tr
 
 | Action | Reference | What it does |
 | --- | --- | --- |
-| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / Kimi / Kimi Code / Z.AI / any compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
+| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / Kimi / Z.AI / any compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
 | **Compose auto-fix prompt** | `LionSR/agent-ci-actions/compose-auto-fix-prompt@v1` | Load a prompt, append CI-failure + PR context, expose as one output. |
 | **Auto-create PR for issue work** | `LionSR/agent-ci-actions/auto-create-issue-pr@v1` | Open a PR from a bot-pushed issue branch; optionally add an auto-fix label. |
 | **Fetch failure logs** | `LionSR/agent-ci-actions/fetch-failure-logs@v1` | Download + sanitize failed-job logs from a workflow run. |
@@ -57,24 +57,19 @@ and talks to any **Anthropic-compatible** API.
 ```
 
 ```yaml
-# Kimi / Moonshot (Anthropic-compatible endpoint; see
-# https://platform.kimi.ai/docs/guide/claude-code-kimi)
+# Kimi — pay-per-token (platform.kimi.ai) or Coding Plan (kimi.com/code)
 - uses: LionSR/agent-ci-actions@v1
   with:
-    provider: kimi              # moonshot is accepted as an alias
+    provider: kimi              # moonshot alias; use kimi-code for the Coding Plan
     kimi-api-key: ${{ secrets.KIMI_API_KEY }}
-    # defaults: base https://api.moonshot.ai/anthropic, model kimi-k3[1m]
+    # platform default: https://api.moonshot.ai/anthropic, model kimi-k3[1m]
     prompt: 'Fix the failing build.'
-```
 
-```yaml
-# Kimi Code subscription (see
-# https://www.kimi.com/code/docs/en/third-party-tools/claude-code)
 - uses: LionSR/agent-ci-actions@v1
   with:
-    provider: kimi-code         # kimicode / kimi_code / kimi-coding are aliases
-    kimi-code-api-key: ${{ secrets.KIMI_CODE_API_KEY }}
-    # defaults: base https://api.kimi.com/coding/, model k3[1m]
+    provider: kimi-code         # or provider: kimi + kimi-base-url: https://api.kimi.com/coding/
+    kimi-api-key: ${{ secrets.KIMI_CODE_API_KEY }}   # kimi-code-api-key also accepted
+    # coding default: https://api.kimi.com/coding/, model k3[1m]
     prompt: 'Fix the failing build.'
 ```
 
@@ -118,15 +113,14 @@ Anthropic model names.
 | --- | --- | --- | --- |
 | `kimi` | platform.kimi.ai (pay-per-token) | `https://api.moonshot.ai/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
 | `kimi-code` | Kimi Code Console (subscription) | `https://api.kimi.com/coding/` | `ANTHROPIC_API_KEY` |
-| `zai` | Open Platform key **or** GLM Coding Plan | `https://api.z.ai/api/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
+| `zai` | Open Platform **or** GLM Coding Plan | `https://api.z.ai/api/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
 | `deepseek` | platform key (pay-per-token only) | `https://api.deepseek.com/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
 
-Moonshot runs two independent platforms and **their keys are not interchangeable** — a
-`platform.kimi.ai` key returns 401 against the subscription endpoint and vice versa, so
-pick the provider that matches where the key was issued.
-
-Z.AI needs no such split: both key types use the same endpoint and auth. The defaults are
-already Coding Plan–safe, since that plan only allows GLM-5.2, GLM-5-Turbo, and GLM-4.7.
+`kimi` and `kimi-code` share one code path — `kimi-code` is just the Coding Plan
+alias (also selected automatically when `kimi-base-url` points at `api.kimi.com`).
+Moonshot's two platforms reject each other's keys, so match the key to the plan.
+Z.AI needs no split: both key types share one endpoint, and the defaults are already
+Coding Plan–safe (GLM-5.2 / GLM-5-Turbo / GLM-4.7 only).
 
 ### DeepSeek models (Claude Code)
 
@@ -151,27 +145,36 @@ Claude Desktop/Code also map `claude-opus*` → pro and `claude-sonnet*` / `clau
     prompt: 'Fix the failing build.'
 ```
 
-### Kimi platform models (Claude Code)
+### Kimi models (Claude Code)
 
-IDs for the pay-per-token endpoint — see [Model List](https://platform.kimi.ai/docs/models)
-and [Use Kimi in Claude Code](https://platform.kimi.ai/docs/guide/claude-code-kimi):
+One provider, two plans — override with `kimi-opus-model` / `kimi-sonnet-model`
+(or `KIMI_OPUS_MODEL` / `KIMI_SONNET_MODEL`).
+
+**Platform** ([docs](https://platform.kimi.ai/docs/guide/claude-code-kimi)):
 
 | Model | Context | Notes |
 | --- | --- | --- |
-| `kimi-k3[1m]` | 1M | **Default.** Flagship; Claude Code spelling of `kimi-k3`. |
-| `kimi-k2.7-code` | 256K | Dedicated coding model; thinking always on. |
-| `kimi-k2.7-code-highspeed` | 256K | Same as `kimi-k2.7-code`, ~5–6× faster output. |
-| `kimi-k2.6` | 256K | Thinking optional; good for latency-sensitive tasks. |
+| `kimi-k3[1m]` | 1M | **Default** for `provider: kimi`. |
+| `kimi-k2.7-code` / `kimi-k2.7-code-highspeed` | 256K | Coding-focused; highspeed ~5–6× faster. |
+| `kimi-k2.6` | 256K | Thinking optional. |
 
-Compact window is set automatically: `1048576` for `kimi-k3*`, `262144` for `k2.7` / `k2.6`.
-Override with `kimi-opus-model` / `kimi-sonnet-model` (or `KIMI_OPUS_MODEL` / `KIMI_SONNET_MODEL`).
+**Coding Plan** ([docs](https://www.kimi.com/code/docs/en/third-party-tools/claude-code)):
 
-**Deprecated — do not use:** `kimi-k2-0905-preview`, other `kimi-k2-*-preview` /
-`kimi-k2-thinking*` IDs (sunset May 25, 2026). `kimi-k2.5` and `moonshot-v1*` are
-being removed for new accounts.
+| Model | Context | Notes |
+| --- | --- | --- |
+| `k3[1m]` | 1M | **Default** for `provider: kimi-code`. |
+| `k3-256k` | 256K | Same model, smaller window. |
+| `kimi-for-coding` / `kimi-for-coding-highspeed` | 256K | Version-stable IDs; highspeed needs Allegretto+. |
+
+Compact window: `1048576` for `[1m]` IDs, `262144` for 256K / `k2.x` / `kimi-for-coding*`.
+Coding Plan also sets `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to match and
+`CLAUDE_CODE_EFFORT_LEVEL=high`.
+
+**Deprecated on the platform — do not use:** `kimi-k2-*-preview` / `kimi-k2-thinking*`
+(sunset May 25, 2026). `kimi-k2.5` and `moonshot-v1*` are being removed for new accounts.
 
 ```yaml
-# Cheaper/faster coding CI on the sonnet tier
+# Platform, cheaper sonnet tier
 - uses: LionSR/agent-ci-actions@v1
   with:
     provider: kimi
@@ -179,35 +182,13 @@ being removed for new accounts.
     model-tier: sonnet
     kimi-sonnet-model: kimi-k2.7-code
     prompt: 'Fix the failing build.'
-```
 
-### Kimi Code models (Claude Code)
-
-IDs for the subscription endpoint — see the
-[Kimi Code Claude Code guide](https://www.kimi.com/code/docs/en/third-party-tools/claude-code)
-and the [membership guide](https://www.kimi.com/help/kimi-code/membership-guide):
-
-| Model | Context | Notes |
-| --- | --- | --- |
-| `k3[1m]` | 1M | **Default.** |
-| `k3-256k` | 256K | Same model, smaller window. |
-| `kimi-for-coding` | 256K | Version-stable ID; auto-maps to the current model. |
-| `kimi-for-coding-highspeed` | 256K | ~5–6× faster output, ~3× credits; needs Allegretto or above. |
-
-Compact window follows the model ID: `1048576` for a `[1m]` ID, `262144` otherwise
-(undersizing only compacts early, whereas oversizing overflows the API).
-`CLAUDE_CODE_MAX_CONTEXT_TOKENS` is set to the same value and
-`CLAUDE_CODE_EFFORT_LEVEL` to `high`, per the guide. Override any of them with
-`kimi-code-opus-model` / `kimi-code-sonnet-model` or the matching env vars.
-
-```yaml
-# Version-stable ID with the high-speed tier
+# Coding Plan, version-stable highspeed
 - uses: LionSR/agent-ci-actions@v1
   with:
     provider: kimi-code
-    kimi-code-api-key: ${{ secrets.KIMI_CODE_API_KEY }}
-    kimi-code-opus-model: kimi-for-coding-highspeed
-    kimi-code-sonnet-model: kimi-for-coding
+    kimi-api-key: ${{ secrets.KIMI_CODE_API_KEY }}
+    kimi-opus-model: kimi-for-coding-highspeed
     prompt: 'Fix the failing build.'
 ```
 
@@ -273,7 +254,7 @@ flowchart TD
     B -- no --> Z[Stop — hand back to a human]
     B -- yes --> C[fetch-failure-logs:<br/>collect failed-job output]
     C --> D[compose-auto-fix-prompt:<br/>prompt + PR + failure context]
-    D --> E[Claude Code Multi-Provider Runner:<br/>Anthropic / DeepSeek / Kimi / Kimi Code / Z.AI]
+    D --> E[Claude Code Multi-Provider Runner:<br/>Anthropic / DeepSeek / Kimi / Z.AI]
     E --> F[Agent edits and pushes a fix commit]
     F --> G[CI re-runs]
     G -- still red --> A

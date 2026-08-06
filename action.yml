@@ -1,14 +1,14 @@
 name: 'Claude Code Multi-Provider Runner'
-description: 'Run Claude Code on Anthropic, DeepSeek, Kimi, Kimi Code, Z.AI/GLM or any compatible provider, with model-tier and caller-supplied tool presets.'
+description: 'Run Claude Code on Anthropic, DeepSeek, Kimi, Z.AI/GLM or any compatible provider, with model-tier and caller-supplied tool presets.'
 
 branding:
   icon: cpu
   color: blue
 
 # Domain-agnostic wrapper around anthropics/claude-code-action. It selects the
-# provider (Anthropic / DeepSeek / Kimi / Kimi Code / Z.AI / any
-# Anthropic-compatible endpoint), resolves the model for the requested tier, and
-# applies an --allowedTools value. Tool presets are NOT baked in: pass a JSON
+# provider (Anthropic / DeepSeek / Kimi / Z.AI / any Anthropic-compatible
+# endpoint), resolves the model for the requested tier, and applies an
+# --allowedTools value. Tool presets are NOT baked in: pass a JSON
 # `allowed_tools_preset_map` and reference its keys via `allowed_tools_preset`,
 # so the action carries no project-specific allowlists.
 #
@@ -17,14 +17,17 @@ branding:
 #   bearer  - DeepSeek / Kimi platform / Z.AI, via ANTHROPIC_AUTH_TOKEN.
 #   api_key - Kimi Code subscription, via ANTHROPIC_API_KEY (its endpoint
 #             rejects the AUTH_TOKEN style the platform endpoint requires).
+#
+# Kimi has one provider path with two plans. `provider: kimi-code` (or a
+# kimi-base-url on api.kimi.com) selects the Coding Plan; otherwise the
+# pay-per-token platform is used. Keys are not interchangeable across plans.
 
 inputs:
   provider:
     description: >-
       Provider name (anthropic, deepseek, kimi, moonshot, kimi-code, zai, z.ai,
-      or glm). Use kimi for a pay-per-token platform.kimi.ai key and kimi-code
-      for a Kimi Code subscription key; the two platforms reject each other's
-      keys.
+      or glm). kimi-code is a Kimi Coding Plan alias (same path, different
+      endpoint/auth/defaults).
     required: false
     default: ''
   claude-oauth-token:
@@ -40,18 +43,22 @@ inputs:
     required: false
     default: ''
   kimi-api-key:
-    description: 'Kimi/Moonshot platform API key (platform.kimi.ai) for kimi provider mode'
+    description: >-
+      Kimi API key — platform.kimi.ai (pay-per-token) or Kimi Code Console
+      (subscription). Match the key to the plan selected by provider /
+      kimi-base-url; the two platforms reject each other's keys.
     required: false
     default: ''
   kimi-code-api-key:
     description: >-
-      Kimi Code subscription API key from the Kimi Code Console
-      (kimi.com/code) for kimi-code provider mode. Not interchangeable with a
-      platform.kimi.ai key.
+      Alias for kimi-api-key when using the Coding Plan. Also read from
+      KIMI_CODE_API_KEY. Prefer this name only to make the secret's origin clear.
     required: false
     default: ''
   zai-api-key:
-    description: 'Z.AI API key for zai/glm provider mode'
+    description: >-
+      Z.AI API key for zai/glm provider mode. Works for both Open Platform and
+      GLM Coding Plan keys (same endpoint and auth).
     required: false
     default: ''
   anthropic-base-url:
@@ -63,13 +70,12 @@ inputs:
     required: false
     default: 'https://api.deepseek.com/anthropic'
   kimi-base-url:
-    description: 'Kimi/Moonshot platform Anthropic-compatible base URL'
+    description: >-
+      Kimi Anthropic-compatible base URL. Default is the platform endpoint;
+      set to https://api.kimi.com/coding/ (or use provider: kimi-code) for the
+      Coding Plan. A URL on api.kimi.com also selects Coding Plan mode.
     required: false
-    default: 'https://api.moonshot.ai/anthropic'
-  kimi-code-base-url:
-    description: 'Kimi Code subscription Anthropic-compatible base URL'
-    required: false
-    default: 'https://api.kimi.com/coding/'
+    default: ''
   zai-base-url:
     description: 'Z.AI Anthropic-compatible base URL'
     required: false
@@ -102,29 +108,15 @@ inputs:
     default: ''
   kimi-opus-model:
     description: >-
-      Kimi model for Opus-tier runs. Claude Code IDs: kimi-k3[1m] (default),
-      kimi-k2.7-code, kimi-k2.7-code-highspeed, kimi-k2.6. Do not use deprecated
-      kimi-k2-*-preview IDs.
+      Kimi model for Opus-tier runs. Platform default: kimi-k3[1m]. Coding Plan
+      default: k3[1m]. Also accepts kimi-k2.7-code / kimi-for-coding /
+      kimi-for-coding-highspeed / k3-256k depending on plan.
     required: false
     default: ''
   kimi-sonnet-model:
     description: >-
-      Kimi model for Sonnet-tier runs. Same IDs as kimi-opus-model; default
-      kimi-k3[1m]. Prefer kimi-k2.7-code for cheaper/faster coding CI.
-    required: false
-    default: ''
-  kimi-code-opus-model:
-    description: >-
-      Kimi Code model for Opus-tier runs. Kimi Code IDs: k3[1m] (default,
-      1M context), k3-256k, or the version-stable kimi-for-coding and
-      kimi-for-coding-highspeed. See
-      https://www.kimi.com/code/docs/en/third-party-tools/claude-code
-    required: false
-    default: ''
-  kimi-code-sonnet-model:
-    description: >-
-      Kimi Code model for Sonnet-tier runs. Same IDs as kimi-code-opus-model;
-      default k3[1m].
+      Kimi model for Sonnet-tier runs. Same IDs as kimi-opus-model; defaults
+      match the selected plan.
     required: false
     default: ''
   zai-opus-model:
@@ -245,7 +237,6 @@ runs:
         INPUT_ANTHROPIC_BASE_URL: ${{ inputs['anthropic-base-url'] }}
         INPUT_DEEPSEEK_BASE_URL: ${{ inputs['deepseek-base-url'] }}
         INPUT_KIMI_BASE_URL: ${{ inputs['kimi-base-url'] }}
-        INPUT_KIMI_CODE_BASE_URL: ${{ inputs['kimi-code-base-url'] }}
         INPUT_ZAI_BASE_URL: ${{ inputs['zai-base-url'] }}
         INPUT_CLAUDE_OPUS_MODEL: ${{ inputs['claude-opus-model'] }}
         INPUT_CLAUDE_SONNET_MODEL: ${{ inputs['claude-sonnet-model'] }}
@@ -254,8 +245,6 @@ runs:
         INPUT_DEEPSEEK_FLASH_MODEL: ${{ inputs['deepseek-flash-model'] }}
         INPUT_KIMI_OPUS_MODEL: ${{ inputs['kimi-opus-model'] }}
         INPUT_KIMI_SONNET_MODEL: ${{ inputs['kimi-sonnet-model'] }}
-        INPUT_KIMI_CODE_OPUS_MODEL: ${{ inputs['kimi-code-opus-model'] }}
-        INPUT_KIMI_CODE_SONNET_MODEL: ${{ inputs['kimi-code-sonnet-model'] }}
         INPUT_ZAI_OPUS_MODEL: ${{ inputs['zai-opus-model'] }}
         INPUT_ZAI_SONNET_MODEL: ${{ inputs['zai-sonnet-model'] }}
         INPUT_ZAI_HAIKU_MODEL: ${{ inputs['zai-haiku-model'] }}
@@ -332,12 +321,12 @@ runs:
         if [ -z "$kimi_api_key_input" ]; then
           kimi_api_key_input="${ANTHROPIC_AUTH_TOKEN-}"
         fi
-
-        # Kimi Code keys stay on their own fallback chain: a platform.kimi.ai
-        # key 401s against the subscription endpoint and vice versa.
-        kimi_code_api_key_input="$INPUT_KIMI_CODE_API_KEY"
-        if [ -z "$kimi_code_api_key_input" ]; then
-          kimi_code_api_key_input="${KIMI_CODE_API_KEY-}"
+        # Coding-plan key alias — same token slot, different secret name.
+        if [ -z "$kimi_api_key_input" ]; then
+          kimi_api_key_input="$INPUT_KIMI_CODE_API_KEY"
+        fi
+        if [ -z "$kimi_api_key_input" ]; then
+          kimi_api_key_input="${KIMI_CODE_API_KEY-}"
         fi
 
         zai_api_key_input="$INPUT_ZAI_API_KEY"
@@ -351,11 +340,34 @@ runs:
           zai_api_key_input="${GLM_API_KEY-}"
         fi
 
-        # Normalize provider aliases.
+        # Normalize provider aliases. kimi-code stays as the Coding Plan name
+        # for step summaries; the resolver below shares one Kimi code path.
+        kimi_coding_plan="false"
         case "$provider" in
           moonshot) provider="kimi" ;;
-          kimicode|kimi_code|kimi-coding) provider="kimi-code" ;;
+          kimi-code|kimicode|kimi_code|kimi-coding)
+            provider="kimi-code"
+            kimi_coding_plan="true"
+            ;;
           z.ai|glm) provider="zai" ;;
+        esac
+
+        # A coding endpoint URL also selects the Coding Plan, even under
+        # provider: kimi — so callers can flip with one base-url override.
+        kimi_base_url_input="$INPUT_KIMI_BASE_URL"
+        if [ -z "$kimi_base_url_input" ]; then
+          kimi_base_url_input="${KIMI_BASE_URL-}"
+        fi
+        if [ -z "$kimi_base_url_input" ]; then
+          kimi_base_url_input="${KIMI_CODE_BASE_URL-}"
+        fi
+        case "$kimi_base_url_input" in
+          *api.kimi.com*)
+            kimi_coding_plan="true"
+            if [ "$provider" = "kimi" ] || [ "$provider" = "moonshot" ]; then
+              provider="kimi-code"
+            fi
+            ;;
         esac
 
         claude_code_oauth_token=""
@@ -406,56 +418,56 @@ runs:
           fi
 
           effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
-        elif [ "$provider" = "kimi" ]; then
+        elif [ "$provider" = "kimi" ] || [ "$provider" = "kimi-code" ]; then
+          # One Kimi path, two plans. Coding Plan docs:
+          # https://www.kimi.com/code/docs/en/third-party-tools/claude-code
+          # Platform docs:
+          # https://platform.kimi.ai/docs/guide/claude-code-kimi
           token="$kimi_api_key_input"
-          # Satisfy anthropics/claude-code-action validation (requires
-          # anthropic_api_key or oauth), but authenticate via AUTH_TOKEN.
-          anthropic_api_key="$token"
-          anthropic_auth_token="$token"
-          anthropic_custom_headers="Authorization: Bearer ${token}"
-          auth_style="bearer"
 
           model_opus="$INPUT_KIMI_OPUS_MODEL"
           if [ -z "$model_opus" ]; then
-            model_opus="${KIMI_OPUS_MODEL:-kimi-k3[1m]}"
+            if [ "$kimi_coding_plan" = "true" ]; then
+              model_opus="${KIMI_OPUS_MODEL:-${KIMI_CODE_OPUS_MODEL:-k3[1m]}}"
+            else
+              model_opus="${KIMI_OPUS_MODEL:-kimi-k3[1m]}"
+            fi
           fi
 
           model_sonnet="$INPUT_KIMI_SONNET_MODEL"
           if [ -z "$model_sonnet" ]; then
-            model_sonnet="${KIMI_SONNET_MODEL:-kimi-k3[1m]}"
+            if [ "$kimi_coding_plan" = "true" ]; then
+              model_sonnet="${KIMI_SONNET_MODEL:-${KIMI_CODE_SONNET_MODEL:-k3[1m]}}"
+            else
+              model_sonnet="${KIMI_SONNET_MODEL:-kimi-k3[1m]}"
+            fi
           fi
 
-          base_url="$INPUT_KIMI_BASE_URL"
+          base_url="$kimi_base_url_input"
           if [ -z "$base_url" ]; then
-            base_url="${KIMI_BASE_URL:-https://api.moonshot.ai/anthropic}"
+            if [ "$kimi_coding_plan" = "true" ]; then
+              base_url="https://api.kimi.com/coding/"
+            else
+              base_url="https://api.moonshot.ai/anthropic"
+            fi
           fi
 
-          effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
-        elif [ "$provider" = "kimi-code" ]; then
-          # https://www.kimi.com/code/docs/en/third-party-tools/claude-code
-          # The subscription endpoint authenticates with ANTHROPIC_API_KEY;
-          # setting ANTHROPIC_AUTH_TOKEN alongside it makes the two conflict.
-          token="$kimi_code_api_key_input"
-          anthropic_api_key="$token"
-          anthropic_api_key_env="$token"
-          auth_style="api_key"
-
-          model_opus="$INPUT_KIMI_CODE_OPUS_MODEL"
-          if [ -z "$model_opus" ]; then
-            model_opus="${KIMI_CODE_OPUS_MODEL:-k3[1m]}"
+          if [ "$kimi_coding_plan" = "true" ]; then
+            # Subscription endpoint wants ANTHROPIC_API_KEY; AUTH_TOKEN conflicts.
+            anthropic_api_key="$token"
+            anthropic_api_key_env="$token"
+            auth_style="api_key"
+            effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-high}"
+            provider="kimi-code"
+          else
+            # Platform endpoint wants ANTHROPIC_AUTH_TOKEN (Bearer).
+            anthropic_api_key="$token"
+            anthropic_auth_token="$token"
+            anthropic_custom_headers="Authorization: Bearer ${token}"
+            auth_style="bearer"
+            effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
+            provider="kimi"
           fi
-
-          model_sonnet="$INPUT_KIMI_CODE_SONNET_MODEL"
-          if [ -z "$model_sonnet" ]; then
-            model_sonnet="${KIMI_CODE_SONNET_MODEL:-k3[1m]}"
-          fi
-
-          base_url="$INPUT_KIMI_CODE_BASE_URL"
-          if [ -z "$base_url" ]; then
-            base_url="${KIMI_CODE_BASE_URL:-https://api.kimi.com/coding/}"
-          fi
-
-          effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-high}"
         elif [ "$provider" = "zai" ]; then
           token="$zai_api_key_input"
           # https://docs.z.ai/devpack/tool/claude
@@ -519,10 +531,8 @@ runs:
         if [ -z "$token" ]; then
           if [ "$provider" = "deepseek" ]; then
             echo "::error::DeepSeek provider requires deepseek-api-key or DEEPSEEK_API_KEY."
-          elif [ "$provider" = "kimi" ]; then
-            echo "::error::Kimi provider requires kimi-api-key, KIMI_API_KEY, MOONSHOT_API_KEY, or ANTHROPIC_AUTH_TOKEN."
-          elif [ "$provider" = "kimi-code" ]; then
-            echo "::error::Kimi Code provider requires kimi-code-api-key or KIMI_CODE_API_KEY (a Kimi Code Console key; platform.kimi.ai keys do not work here)."
+          elif [ "$provider" = "kimi" ] || [ "$provider" = "kimi-code" ]; then
+            echo "::error::Kimi provider requires kimi-api-key / kimi-code-api-key (or KIMI_API_KEY / KIMI_CODE_API_KEY / MOONSHOT_API_KEY). Use a platform.kimi.ai key with provider: kimi, or a Kimi Code Console key with provider: kimi-code — the keys are not interchangeable."
           elif [ "$provider" = "zai" ]; then
             echo "::error::Z.AI provider requires zai-api-key, ZAI_API_KEY, Z_AI_API_KEY, or GLM_API_KEY."
           else
@@ -646,28 +656,7 @@ runs:
           default_fable_model="$model_flash"
           subagent_model="$model_flash"
           auto_compact_window="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-1048576}"
-        elif [ "$provider" = "kimi" ]; then
-          # https://platform.kimi.ai/docs/guide/claude-code-kimi
-          default_opus_model="$model_opus"
-          default_sonnet_model="$model_sonnet"
-          default_haiku_model="$model"
-          default_fable_model="$model"
-          subagent_model="$model"
-
-          auto_compact_window="${CLAUDE_CODE_AUTO_COMPACT_WINDOW-}"
-          if [ -z "$auto_compact_window" ]; then
-            case "$model" in
-              *k2.7*|*k2.6*|*k2.5*)
-                auto_compact_window="262144"
-                ;;
-              *)
-                # kimi-k3 / kimi-k3[1m] and unknown ids → 1M (Claude Code guide).
-                auto_compact_window="1048576"
-                ;;
-            esac
-          fi
-        elif [ "$provider" = "kimi-code" ]; then
-          # https://www.kimi.com/code/docs/en/third-party-tools/claude-code
+        elif [ "$provider" = "kimi" ] || [ "$provider" = "kimi-code" ]; then
           default_opus_model="$model_opus"
           default_sonnet_model="$model_sonnet"
           default_haiku_model="$model"
@@ -680,14 +669,22 @@ runs:
               *'[1m]'*)
                 auto_compact_window="1048576"
                 ;;
-              *)
-                # k3-256k, kimi-for-coding* and unknown ids → the 256K window.
-                # Undersizing only compacts early; oversizing overflows the API.
+              *k2.7*|*k2.6*|*k2.5*|*256k*|kimi-for-coding*)
                 auto_compact_window="262144"
+                ;;
+              *)
+                # Unknown IDs: Coding Plan undersizes (safe); platform assumes 1M.
+                if [ "$kimi_coding_plan" = "true" ]; then
+                  auto_compact_window="262144"
+                else
+                  auto_compact_window="1048576"
+                fi
                 ;;
             esac
           fi
-          max_context_tokens="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-$auto_compact_window}"
+          if [ "$kimi_coding_plan" = "true" ]; then
+            max_context_tokens="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-$auto_compact_window}"
+          fi
         elif [ "$provider" = "zai" ]; then
           # https://docs.z.ai/devpack/tool/claude
           # https://docs.z.ai/devpack/latest-model

@@ -81,7 +81,8 @@ jobs:
 
             local auto_compact
             case "$model_name" in
-              *k2.7*|*k2.6*|*k2.5*) auto_compact="262144" ;;
+              *'[1m]'*) auto_compact="1048576" ;;
+              *k2.7*|*k2.6*|*k2.5*|*256k*|kimi-for-coding*) auto_compact="262144" ;;
               *) auto_compact="1048576" ;;
             esac
 
@@ -92,7 +93,7 @@ jobs:
           got="$(resolve_kimi kimi opus)"
           [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "kimi default: $got"; exit 1; }
 
-          # Plain API id kimi-k3 also gets 1M.
+          # Plain API id kimi-k3 also gets 1M (platform unknown → 1M).
           got="$(resolve_kimi kimi opus kimi-k3 kimi-k3)"
           [ "$got" = "kimi kimi-k3 1048576" ] || { echo "kimi-k3 compact: $got"; exit 1; }
 
@@ -112,53 +113,74 @@ jobs:
           got="$(resolve_kimi kimi opus kimi-k2.7-code kimi-k2.7-code)"
           [ "$got" = "kimi kimi-k2.7-code 262144" ] || { echo "k2.7-code compact: $got"; exit 1; }
 
-          # Kimi Code subscription defaults:
+          # Kimi Coding Plan: provider alias OR api.kimi.com base URL.
           # https://www.kimi.com/code/docs/en/third-party-tools/claude-code
-          resolve_kimi_code() {
-            local provider="${1:-kimi-code}"
-            local model_tier="${2:-opus}"
-            local model_opus="${3:-k3[1m]}"
-            local model_sonnet="${4:-k3[1m]}"
+          resolve_kimi_plan() {
+            local provider="${1:-kimi}"
+            local base_url="${2:-}"
+            local model_tier="${3:-opus}"
+            local model_opus="${4-}"
+            local model_sonnet="${5-}"
             local model_name
+            local coding="false"
 
             provider="${provider,,}"
             case "$provider" in
-              kimicode|kimi_code|kimi-coding) provider="kimi-code" ;;
+              moonshot) provider="kimi" ;;
+              kimi-code|kimicode|kimi_code|kimi-coding)
+                provider="kimi-code"
+                coding="true"
+                ;;
             esac
-            [ "$provider" = "kimi-code" ] || { echo "expected kimi-code, got $provider"; return 1; }
+            case "$base_url" in
+              *api.kimi.com*)
+                coding="true"
+                provider="kimi-code"
+                ;;
+            esac
 
+            if [ "$coding" = "true" ]; then
+              model_opus="${model_opus:-k3[1m]}"
+              model_sonnet="${model_sonnet:-k3[1m]}"
+            else
+              model_opus="${model_opus:-kimi-k3[1m]}"
+              model_sonnet="${model_sonnet:-kimi-k3[1m]}"
+            fi
             case "$model_tier" in
               sonnet) model_name="$model_sonnet" ;;
               *) model_name="$model_opus" ;;
             esac
 
-            local auto_compact
+            local auto_compact auth
             case "$model_name" in
               *'[1m]'*) auto_compact="1048576" ;;
-              *) auto_compact="262144" ;;
+              *k2.7*|*k2.6*|*k2.5*|*256k*|kimi-for-coding*) auto_compact="262144" ;;
+              *)
+                if [ "$coding" = "true" ]; then auto_compact="262144"
+                else auto_compact="1048576"; fi
+                ;;
             esac
+            if [ "$coding" = "true" ]; then auth="api_key"; else auth="bearer"; fi
 
-            printf '%s %s %s %s\n' "$provider" "$model_name" "$auto_compact" "api_key"
+            printf '%s %s %s %s\n' "$provider" "$model_name" "$auto_compact" "$auth"
           }
 
-          # Default k3[1m] against the subscription endpoint, api-key auth.
-          got="$(resolve_kimi_code kimi-code opus)"
+          got="$(resolve_kimi_plan kimi-code)"
           [ "$got" = "kimi-code k3[1m] 1048576 api_key" ] || {
             echo "kimi-code default: $got"; exit 1
           }
 
-          got="$(resolve_kimi_code kimicode opus)"
+          got="$(resolve_kimi_plan kimi 'https://api.kimi.com/coding/')"
           [ "$got" = "kimi-code k3[1m] 1048576 api_key" ] || {
-            echo "kimicode alias: $got"; exit 1
+            echo "kimi base-url detects coding: $got"; exit 1
           }
 
-          # 256K ids fall back to the smaller window rather than overflowing.
-          got="$(resolve_kimi_code kimi-code opus k3-256k k3-256k)"
+          got="$(resolve_kimi_plan kimi-code '' opus k3-256k k3-256k)"
           [ "$got" = "kimi-code k3-256k 262144 api_key" ] || {
             echo "kimi-code k3-256k: $got"; exit 1
           }
 
-          got="$(resolve_kimi_code kimi-code sonnet 'k3[1m]' kimi-for-coding)"
+          got="$(resolve_kimi_plan kimi-code '' sonnet 'k3[1m]' kimi-for-coding)"
           [ "$got" = "kimi-code kimi-for-coding 262144 api_key" ] || {
             echo "kimi-code sonnet tier: $got"; exit 1
           }

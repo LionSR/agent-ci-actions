@@ -72,7 +72,7 @@ and talks to any **Anthropic-compatible** API.
     provider: zai               # z.ai and glm are accepted as aliases
     zai-api-key: ${{ secrets.ZAI_API_KEY }}
     # defaults: base https://api.z.ai/api/anthropic,
-    # opus/sonnet glm-5.2[1m], haiku/subagent glm-4.5-air
+    # opus/sonnet glm-5.2[1m], haiku/subagent glm-4.7
     prompt: 'Fix the failing build.'
 ```
 
@@ -155,19 +155,21 @@ being removed for new accounts.
 ### Z.AI / GLM models (Claude Code)
 
 IDs from the [Z.AI Claude Code guide](https://docs.z.ai/devpack/tool/claude) and
-[How to Switch Models](https://docs.z.ai/devpack/latest-model):
+[How to Switch Models](https://docs.z.ai/devpack/latest-model). GLM Coding Plan
+calls are limited to **GLM-5.2**, **GLM-5-Turbo**, and **GLM-4.7**
+([FAQ](https://docs.z.ai/devpack/faq)):
 
 | Role | Model | Notes |
 | --- | --- | --- |
 | Main / opus / sonnet default | `glm-5.2[1m]` | **Default.** Latest flagship with 1M context (`[1m]` suffix). |
-| Haiku / sub-agent | `glm-4.5-air` | Cheaper background work; override with `zai-haiku-model`. |
-| Older coding default | `glm-4.7` | Still valid; set via `zai-opus-model` / `zai-sonnet-model`. |
+| Haiku / sub-agent | `glm-4.7` | **Default** for background tiers (Coding Plan–safe). |
+| Faster / cheaper main | `glm-5-turbo` or `glm-4.7` | Set via `zai-opus-model` / `zai-sonnet-model`. |
 
 Also sets `API_TIMEOUT_MS=3000000`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`
 (Z.AI’s documented value), and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
 
 ```yaml
-# Pin to glm-4.7 instead of glm-5.2
+# Pin everything to glm-4.7
 - uses: LionSR/agent-ci-actions@v1
   with:
     provider: zai

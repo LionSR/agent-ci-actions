@@ -145,7 +145,7 @@ jobs:
             local model_tier="${2:-opus}"
             local model_opus="${3:-glm-5.2[1m]}"
             local model_sonnet="${4:-glm-5.2[1m]}"
-            local model_haiku="${5:-glm-4.5-air}"
+            local model_haiku="${5:-glm-4.7}"
             local model_name
 
             provider="${provider,,}"
@@ -162,17 +162,17 @@ jobs:
           }
 
           got="$(resolve_zai zai opus)"
-          [ "$got" = "zai glm-5.2[1m] glm-4.5-air 1000000" ] || {
+          [ "$got" = "zai glm-5.2[1m] glm-4.7 1000000" ] || {
             echo "zai default: $got"; exit 1
           }
 
           got="$(resolve_zai glm opus)"
-          [ "$got" = "zai glm-5.2[1m] glm-4.5-air 1000000" ] || {
+          [ "$got" = "zai glm-5.2[1m] glm-4.7 1000000" ] || {
             echo "glm alias: $got"; exit 1
           }
 
-          got="$(resolve_zai zai opus glm-4.7 glm-4.7 glm-4.5-air)"
-          [ "$got" = "zai glm-4.7 glm-4.5-air 1000000" ] || {
+          got="$(resolve_zai zai opus glm-4.7 glm-4.7 glm-4.7)"
+          [ "$got" = "zai glm-4.7 glm-4.7 1000000" ] || {
             echo "zai glm-4.7: $got"; exit 1
           }
 

@@ -109,8 +109,8 @@ inputs:
     default: ''
   zai-haiku-model:
     description: >-
-      Z.AI/GLM model for Haiku-tier and sub-agent work. Default glm-4.5-air per
-      the Z.AI Claude Code / latest-model guides.
+      Z.AI/GLM model for Haiku-tier and sub-agent work. Default glm-4.7 (Coding
+      Plan allowed models are glm-5.2, glm-5-turbo, glm-4.7).
     required: false
     default: ''
   model-tier:
@@ -406,7 +406,7 @@ runs:
 
           model_flash="$INPUT_ZAI_HAIKU_MODEL"
           if [ -z "$model_flash" ]; then
-            model_flash="${ZAI_HAIKU_MODEL:-glm-4.5-air}"
+            model_flash="${ZAI_HAIKU_MODEL:-glm-4.7}"
           fi
 
           base_url="$INPUT_ZAI_BASE_URL"

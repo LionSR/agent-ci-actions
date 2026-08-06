@@ -50,3 +50,130 @@ jobs:
           [ "$got" = "Edit,Read,Bash(make *)" ] || { echo "file map wrong: $got"; exit 1; }
 
           echo "preset resolver OK"
+
+  provider-resolver:
+    name: kimi / deepseek provider defaults
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve provider defaults like the action does
+        run: |
+          set -euo pipefail
+
+          resolve_kimi() {
+            local provider="${1:-kimi}"
+            local model_tier="${2:-opus}"
+            local kimi_opus="${3-}"
+            local kimi_sonnet="${4-}"
+            local model_name
+
+            provider="${provider,,}"
+            if [ "$provider" = "moonshot" ]; then
+              provider="kimi"
+            fi
+            [ "$provider" = "kimi" ] || { echo "expected kimi, got $provider"; return 1; }
+
+            local model_opus="${kimi_opus:-kimi-k3[1m]}"
+            local model_sonnet="${kimi_sonnet:-kimi-k3[1m]}"
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+
+            local auto_compact
+            case "$model_name" in
+              *k2.7*|*k2.6*|*k2.5*) auto_compact="262144" ;;
+              *) auto_compact="1048576" ;;
+            esac
+
+            printf '%s %s %s\n' "$provider" "$model_name" "$auto_compact"
+          }
+
+          # Default kimi-k3[1m] + 1M compact window.
+          got="$(resolve_kimi kimi opus)"
+          [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "kimi default: $got"; exit 1; }
+
+          # Plain API id kimi-k3 also gets 1M.
+          got="$(resolve_kimi kimi opus kimi-k3 kimi-k3)"
+          [ "$got" = "kimi kimi-k3 1048576" ] || { echo "kimi-k3 compact: $got"; exit 1; }
+
+          # moonshot alias.
+          got="$(resolve_kimi moonshot opus)"
+          [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "moonshot alias: $got"; exit 1; }
+
+          # High-speed / k2.7 uses 256K compact window.
+          got="$(resolve_kimi kimi opus kimi-k2.7-code-highspeed kimi-k2.7-code-highspeed)"
+          [ "$got" = "kimi kimi-k2.7-code-highspeed 262144" ] || { echo "k2.7 compact: $got"; exit 1; }
+
+          # Sonnet tier picks the sonnet model input.
+          got="$(resolve_kimi kimi sonnet kimi-k3[1m] kimi-k2.6)"
+          [ "$got" = "kimi kimi-k2.6 262144" ] || { echo "sonnet tier: $got"; exit 1; }
+
+          # Coding model also uses the 256K compact window.
+          got="$(resolve_kimi kimi opus kimi-k2.7-code kimi-k2.7-code)"
+          [ "$got" = "kimi kimi-k2.7-code 262144" ] || { echo "k2.7-code compact: $got"; exit 1; }
+
+          # DeepSeek Claude Code defaults:
+          # https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/
+          resolve_deepseek() {
+            local model_tier="${1:-opus}"
+            local model_opus="${2:-deepseek-v4-pro[1m]}"
+            local model_sonnet="${3:-deepseek-v4-pro[1m]}"
+            local model_flash="${4:-deepseek-v4-flash}"
+            local model_name
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+            # haiku + subagent always flash per the guide
+            printf '%s %s %s\n' "$model_name" "$model_flash" "$model_flash"
+          }
+
+          got="$(resolve_deepseek opus)"
+          [ "$got" = "deepseek-v4-pro[1m] deepseek-v4-flash deepseek-v4-flash" ] || {
+            echo "deepseek default: $got"; exit 1
+          }
+
+          got="$(resolve_deepseek sonnet deepseek-v4-pro[1m] deepseek-v4-flash)"
+          [ "$got" = "deepseek-v4-flash deepseek-v4-flash deepseek-v4-flash" ] || {
+            echo "deepseek sonnet=flash: $got"; exit 1
+          }
+
+          # Z.AI / GLM Claude Code defaults:
+          # https://docs.z.ai/devpack/latest-model
+          resolve_zai() {
+            local provider="${1:-zai}"
+            local model_tier="${2:-opus}"
+            local model_opus="${3:-glm-5.2[1m]}"
+            local model_sonnet="${4:-glm-5.2[1m]}"
+            local model_haiku="${5:-glm-4.7}"
+            local model_name
+
+            provider="${provider,,}"
+            case "$provider" in
+              z.ai|glm) provider="zai" ;;
+            esac
+            [ "$provider" = "zai" ] || { echo "expected zai, got $provider"; return 1; }
+
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+            printf '%s %s %s %s\n' "$provider" "$model_name" "$model_haiku" "1000000"
+          }
+
+          got="$(resolve_zai zai opus)"
+          [ "$got" = "zai glm-5.2[1m] glm-4.7 1000000" ] || {
+            echo "zai default: $got"; exit 1
+          }
+
+          got="$(resolve_zai glm opus)"
+          [ "$got" = "zai glm-5.2[1m] glm-4.7 1000000" ] || {
+            echo "glm alias: $got"; exit 1
+          }
+
+          got="$(resolve_zai zai opus glm-4.7 glm-4.7 glm-4.7)"
+          [ "$got" = "zai glm-4.7 glm-4.7 1000000" ] || {
+            echo "zai glm-4.7: $got"; exit 1
+          }
+
+          echo "provider resolver OK"

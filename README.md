@@ -1,15 +1,18 @@
 # agent-ci-actions
 
 Run **Claude Code in CI across providers** — Anthropic, **DeepSeek**, **Kimi (Moonshot)**,
-**Z.AI (GLM)**, or any Anthropic-compatible endpoint — and wire up **self-healing auto-fix**
-loops. Domain-agnostic: no project-specific tool allowlists are baked in; you supply them.
+**Kimi Code**, **Z.AI (GLM)**, or any Anthropic-compatible endpoint — and wire up
+**self-healing auto-fix** loops. Works with both pay-per-token API keys and coding-plan
+subscriptions. Domain-agnostic: no project-specific tool allowlists are baked in; you
+supply them.
 
 De-duplicated from several private repositories into one maintained source of truth.
 
 ## Why
 
 - **Provider choice.** One token swap runs the same agent on Anthropic, DeepSeek, Kimi,
-  or Z.AI — pick by cost, context window, or availability without rewriting workflows.
+  Kimi Code, or Z.AI — pick by cost, context window, or availability without rewriting
+  workflows, and pay by token or against a coding-plan subscription.
 - **Auto-fix.** Turn a red CI run into an agent that reads the failure, pushes a fix,
   and lets CI re-run — bounded by an iteration cap so it never loops forever.
 - **No lock-in to one project.** Tool allowlists ("presets") are caller-supplied JSON,
@@ -19,7 +22,7 @@ De-duplicated from several private repositories into one maintained source of tr
 
 | Action | Reference | What it does |
 | --- | --- | --- |
-| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / Kimi / Z.AI / any compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
+| **Claude Code Multi-Provider Runner** | `LionSR/agent-ci-actions@v1` | Run Claude Code against Anthropic / DeepSeek / Kimi / Kimi Code / Z.AI / any compatible provider; resolve model by tier; apply a caller-supplied tool preset. |
 | **Compose auto-fix prompt** | `LionSR/agent-ci-actions/compose-auto-fix-prompt@v1` | Load a prompt, append CI-failure + PR context, expose as one output. |
 | **Auto-create PR for issue work** | `LionSR/agent-ci-actions/auto-create-issue-pr@v1` | Open a PR from a bot-pushed issue branch; optionally add an auto-fix label. |
 | **Fetch failure logs** | `LionSR/agent-ci-actions/fetch-failure-logs@v1` | Download + sanitize failed-job logs from a workflow run. |
@@ -65,6 +68,17 @@ and talks to any **Anthropic-compatible** API.
 ```
 
 ```yaml
+# Kimi Code subscription (see
+# https://www.kimi.com/code/docs/en/third-party-tools/claude-code)
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: kimi-code         # kimicode / kimi_code / kimi-coding are aliases
+    kimi-code-api-key: ${{ secrets.KIMI_CODE_API_KEY }}
+    # defaults: base https://api.kimi.com/coding/, model k3[1m]
+    prompt: 'Fix the failing build.'
+```
+
+```yaml
 # Z.AI / GLM Coding Plan (see https://docs.z.ai/devpack/tool/claude and
 # https://docs.z.ai/devpack/latest-model)
 - uses: LionSR/agent-ci-actions@v1
@@ -90,14 +104,29 @@ and talks to any **Anthropic-compatible** API.
 `model-tier` (`opus` / `sonnet`) picks between the opus- and sonnet-tier model inputs,
 so one workflow can dial cost/quality per call. Tokens and model names also fall back to
 the matching env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `DEEPSEEK_API_KEY`, `KIMI_API_KEY` /
-`MOONSHOT_API_KEY` / `ANTHROPIC_AUTH_TOKEN`, `ZAI_API_KEY` / `GLM_API_KEY`,
-`CLAUDE_OPUS_MODEL`, `KIMI_OPUS_MODEL`, `ZAI_OPUS_MODEL`, …).
+`MOONSHOT_API_KEY` / `ANTHROPIC_AUTH_TOKEN`, `KIMI_CODE_API_KEY`, `ZAI_API_KEY` /
+`GLM_API_KEY`, `CLAUDE_OPUS_MODEL`, `KIMI_OPUS_MODEL`, `ZAI_OPUS_MODEL`, …).
 
-For `provider: deepseek`, `kimi`, and `zai` the action sets the Claude Code env vars
-those guides require (`ANTHROPIC_AUTH_TOKEN`, all `ANTHROPIC_DEFAULT_*_MODEL` tiers,
-`CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_EFFORT_LEVEL=max`, plus auto-compact /
-timeout where needed) so background and sub-agent calls do not fall back to Anthropic
-model names.
+For every non-Anthropic provider the action fills all `ANTHROPIC_DEFAULT_*_MODEL` tiers
+plus `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, and
+`CLAUDE_CODE_EFFORT_LEVEL`, so background and sub-agent calls never fall back to
+Anthropic model names.
+
+### API keys vs. coding plans
+
+| Provider | Key | Endpoint | Auth |
+| --- | --- | --- | --- |
+| `kimi` | platform.kimi.ai (pay-per-token) | `https://api.moonshot.ai/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
+| `kimi-code` | Kimi Code Console (subscription) | `https://api.kimi.com/coding/` | `ANTHROPIC_API_KEY` |
+| `zai` | Open Platform key **or** GLM Coding Plan | `https://api.z.ai/api/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
+| `deepseek` | platform key (pay-per-token only) | `https://api.deepseek.com/anthropic` | `ANTHROPIC_AUTH_TOKEN` |
+
+Moonshot runs two independent platforms and **their keys are not interchangeable** — a
+`platform.kimi.ai` key returns 401 against the subscription endpoint and vice versa, so
+pick the provider that matches where the key was issued.
+
+Z.AI needs no such split: both key types use the same endpoint and auth. The defaults are
+already Coding Plan–safe, since that plan only allows GLM-5.2, GLM-5-Turbo, and GLM-4.7.
 
 ### DeepSeek models (Claude Code)
 
@@ -122,9 +151,9 @@ Claude Desktop/Code also map `claude-opus*` → pro and `claude-sonnet*` / `clau
     prompt: 'Fix the failing build.'
 ```
 
-### Kimi models (Claude Code)
+### Kimi platform models (Claude Code)
 
-IDs for the Anthropic-compatible endpoint — see [Model List](https://platform.kimi.ai/docs/models)
+IDs for the pay-per-token endpoint — see [Model List](https://platform.kimi.ai/docs/models)
 and [Use Kimi in Claude Code](https://platform.kimi.ai/docs/guide/claude-code-kimi):
 
 | Model | Context | Notes |
@@ -149,6 +178,36 @@ being removed for new accounts.
     kimi-api-key: ${{ secrets.KIMI_API_KEY }}
     model-tier: sonnet
     kimi-sonnet-model: kimi-k2.7-code
+    prompt: 'Fix the failing build.'
+```
+
+### Kimi Code models (Claude Code)
+
+IDs for the subscription endpoint — see the
+[Kimi Code Claude Code guide](https://www.kimi.com/code/docs/en/third-party-tools/claude-code)
+and the [membership guide](https://www.kimi.com/help/kimi-code/membership-guide):
+
+| Model | Context | Notes |
+| --- | --- | --- |
+| `k3[1m]` | 1M | **Default.** |
+| `k3-256k` | 256K | Same model, smaller window. |
+| `kimi-for-coding` | 256K | Version-stable ID; auto-maps to the current model. |
+| `kimi-for-coding-highspeed` | 256K | ~5–6× faster output, ~3× credits; needs Allegretto or above. |
+
+Compact window follows the model ID: `1048576` for a `[1m]` ID, `262144` otherwise
+(undersizing only compacts early, whereas oversizing overflows the API).
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` is set to the same value and
+`CLAUDE_CODE_EFFORT_LEVEL` to `high`, per the guide. Override any of them with
+`kimi-code-opus-model` / `kimi-code-sonnet-model` or the matching env vars.
+
+```yaml
+# Version-stable ID with the high-speed tier
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: kimi-code
+    kimi-code-api-key: ${{ secrets.KIMI_CODE_API_KEY }}
+    kimi-code-opus-model: kimi-for-coding-highspeed
+    kimi-code-sonnet-model: kimi-for-coding
     prompt: 'Fix the failing build.'
 ```
 
@@ -214,7 +273,7 @@ flowchart TD
     B -- no --> Z[Stop — hand back to a human]
     B -- yes --> C[fetch-failure-logs:<br/>collect failed-job output]
     C --> D[compose-auto-fix-prompt:<br/>prompt + PR + failure context]
-    D --> E[Claude Code Multi-Provider Runner:<br/>Anthropic / DeepSeek / Kimi / Z.AI]
+    D --> E[Claude Code Multi-Provider Runner:<br/>Anthropic / DeepSeek / Kimi / Kimi Code / Z.AI]
     E --> F[Agent edits and pushes a fix commit]
     F --> G[CI re-runs]
     G -- still red --> A

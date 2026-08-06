@@ -86,6 +86,10 @@ on:
         required: false
       MOONSHOT_API_KEY:
         required: false
+      ZAI_API_KEY:
+        required: false
+      GLM_API_KEY:
+        required: false
 
 jobs:
   auto-fix:
@@ -96,12 +100,18 @@ jobs:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
       MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
       ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
       CLAUDE_OPUS_MODEL: ${{ vars.CLAUDE_OPUS_MODEL }}
       CLAUDE_SONNET_MODEL: ${{ vars.CLAUDE_SONNET_MODEL }}
       KIMI_OPUS_MODEL: ${{ vars.KIMI_OPUS_MODEL }}
       KIMI_SONNET_MODEL: ${{ vars.KIMI_SONNET_MODEL }}
       KIMI_BASE_URL: ${{ vars.KIMI_BASE_URL }}
+      ZAI_OPUS_MODEL: ${{ vars.ZAI_OPUS_MODEL }}
+      ZAI_SONNET_MODEL: ${{ vars.ZAI_SONNET_MODEL }}
+      ZAI_HAIKU_MODEL: ${{ vars.ZAI_HAIKU_MODEL }}
+      ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

@@ -1,24 +1,23 @@
 name: 'Claude Code Multi-Provider Runner'
-description: 'Run Claude Code on Anthropic, DeepSeek, Kimi or any compatible provider, with model-tier and caller-supplied tool presets.'
+description: 'Run Claude Code on Anthropic, DeepSeek, Kimi, Z.AI/GLM or any compatible provider, with model-tier and caller-supplied tool presets.'
 
 branding:
   icon: cpu
   color: blue
 
 # Domain-agnostic wrapper around anthropics/claude-code-action. It selects the
-# provider (Anthropic / DeepSeek / Kimi / any Anthropic-compatible endpoint),
-# resolves the model for the requested tier, and applies an --allowedTools
-# value. Tool presets are NOT baked in: pass a JSON `allowed_tools_preset_map`
-# and reference its keys via `allowed_tools_preset`, so the action carries no
-# project-specific allowlists.
+# provider (Anthropic / DeepSeek / Kimi / Z.AI / any Anthropic-compatible
+# endpoint), resolves the model for the requested tier, and applies an
+# --allowedTools value. Tool presets are NOT baked in: pass a JSON
+# `allowed_tools_preset_map` and reference its keys via `allowed_tools_preset`,
+# so the action carries no project-specific allowlists.
 #
-# Kimi (Moonshot) uses the Anthropic-compatible endpoint documented at
-# https://platform.kimi.ai/docs/guide/claude-code-kimi — auth via
-# ANTHROPIC_AUTH_TOKEN, default model kimi-k3[1m].
+# Compatible providers (DeepSeek, Kimi, Z.AI) authenticate with
+# ANTHROPIC_AUTH_TOKEN against their Anthropic-compatible base URLs.
 
 inputs:
   provider:
-    description: 'Provider name (anthropic, deepseek, kimi, or moonshot)'
+    description: 'Provider name (anthropic, deepseek, kimi, moonshot, zai, z.ai, or glm)'
     required: false
     default: ''
   claude-oauth-token:
@@ -37,6 +36,10 @@ inputs:
     description: 'Kimi/Moonshot API key for kimi provider mode'
     required: false
     default: ''
+  zai-api-key:
+    description: 'Z.AI API key for zai/glm provider mode'
+    required: false
+    default: ''
   anthropic-base-url:
     description: 'Anthropic-compatible base URL'
     required: false
@@ -49,6 +52,10 @@ inputs:
     description: 'Kimi/Moonshot Anthropic-compatible base URL'
     required: false
     default: 'https://api.moonshot.ai/anthropic'
+  zai-base-url:
+    description: 'Z.AI Anthropic-compatible base URL'
+    required: false
+    default: 'https://api.z.ai/api/anthropic'
   claude-opus-model:
     description: 'Anthropic model name for Opus-tier runs'
     required: false
@@ -86,6 +93,24 @@ inputs:
     description: >-
       Kimi model for Sonnet-tier runs. Same IDs as kimi-opus-model; default
       kimi-k3[1m]. Prefer kimi-k2.7-code for cheaper/faster coding CI.
+    required: false
+    default: ''
+  zai-opus-model:
+    description: >-
+      Z.AI/GLM model for Opus-tier runs. Default glm-5.2[1m] per
+      https://docs.z.ai/devpack/latest-model
+    required: false
+    default: ''
+  zai-sonnet-model:
+    description: >-
+      Z.AI/GLM model for Sonnet-tier runs. Default glm-5.2[1m]; set to glm-4.7
+      for cheaper CI.
+    required: false
+    default: ''
+  zai-haiku-model:
+    description: >-
+      Z.AI/GLM model for Haiku-tier and sub-agent work. Default glm-4.5-air per
+      the Z.AI Claude Code / latest-model guides.
     required: false
     default: ''
   model-tier:
@@ -183,9 +208,11 @@ runs:
         INPUT_ANTHROPIC_API_KEY: ${{ inputs['anthropic-api-key'] }}
         INPUT_DEEPSEEK_API_KEY: ${{ inputs['deepseek-api-key'] }}
         INPUT_KIMI_API_KEY: ${{ inputs['kimi-api-key'] }}
+        INPUT_ZAI_API_KEY: ${{ inputs['zai-api-key'] }}
         INPUT_ANTHROPIC_BASE_URL: ${{ inputs['anthropic-base-url'] }}
         INPUT_DEEPSEEK_BASE_URL: ${{ inputs['deepseek-base-url'] }}
         INPUT_KIMI_BASE_URL: ${{ inputs['kimi-base-url'] }}
+        INPUT_ZAI_BASE_URL: ${{ inputs['zai-base-url'] }}
         INPUT_CLAUDE_OPUS_MODEL: ${{ inputs['claude-opus-model'] }}
         INPUT_CLAUDE_SONNET_MODEL: ${{ inputs['claude-sonnet-model'] }}
         INPUT_DEEPSEEK_OPUS_MODEL: ${{ inputs['deepseek-opus-model'] }}
@@ -193,6 +220,9 @@ runs:
         INPUT_DEEPSEEK_FLASH_MODEL: ${{ inputs['deepseek-flash-model'] }}
         INPUT_KIMI_OPUS_MODEL: ${{ inputs['kimi-opus-model'] }}
         INPUT_KIMI_SONNET_MODEL: ${{ inputs['kimi-sonnet-model'] }}
+        INPUT_ZAI_OPUS_MODEL: ${{ inputs['zai-opus-model'] }}
+        INPUT_ZAI_SONNET_MODEL: ${{ inputs['zai-sonnet-model'] }}
+        INPUT_ZAI_HAIKU_MODEL: ${{ inputs['zai-haiku-model'] }}
         INPUT_MODEL_TIER: ${{ inputs['model-tier'] }}
         INPUT_ALLOWED_BOTS: ${{ inputs['allowed-bots'] }}
         INPUT_BRANCH_NAME_TEMPLATE: ${{ inputs['branch-name-template'] }}
@@ -267,16 +297,28 @@ runs:
           kimi_api_key_input="${ANTHROPIC_AUTH_TOKEN-}"
         fi
 
-        # Normalize moonshot as an alias for kimi.
-        if [ "$provider" = "moonshot" ]; then
-          provider="kimi"
+        zai_api_key_input="$INPUT_ZAI_API_KEY"
+        if [ -z "$zai_api_key_input" ]; then
+          zai_api_key_input="${ZAI_API_KEY-}"
         fi
+        if [ -z "$zai_api_key_input" ]; then
+          zai_api_key_input="${Z_AI_API_KEY-}"
+        fi
+        if [ -z "$zai_api_key_input" ]; then
+          zai_api_key_input="${GLM_API_KEY-}"
+        fi
+
+        # Normalize provider aliases.
+        case "$provider" in
+          moonshot) provider="kimi" ;;
+          z.ai|glm) provider="zai" ;;
+        esac
 
         claude_code_oauth_token=""
         anthropic_api_key=""
-        # DeepSeek and Kimi authenticate with ANTHROPIC_AUTH_TOKEN (Bearer). Keep
-        # ANTHROPIC_API_KEY out of the subprocess env for those providers — the
-        # two conflict. See DeepSeek / Kimi Claude Code guides.
+        # Compatible providers authenticate with ANTHROPIC_AUTH_TOKEN (Bearer).
+        # Keep ANTHROPIC_API_KEY out of the subprocess env for those — the two
+        # conflict. See DeepSeek / Kimi / Z.AI Claude Code guides.
         anthropic_api_key_env=""
         anthropic_auth_token=""
         anthropic_custom_headers=""
@@ -284,6 +326,8 @@ runs:
         effort_level=""
         use_auth_token="false"
         model_flash=""
+        api_timeout_ms=""
+        disable_nonessential_traffic=""
 
         if [ "$provider" = "deepseek" ]; then
           # deepseek_api_key_input already folds in the DEEPSEEK_API_KEY env fallback.
@@ -341,6 +385,38 @@ runs:
           fi
 
           effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
+        elif [ "$provider" = "zai" ]; then
+          token="$zai_api_key_input"
+          # https://docs.z.ai/devpack/tool/claude
+          # https://docs.z.ai/devpack/latest-model
+          anthropic_api_key="$token"
+          anthropic_auth_token="$token"
+          anthropic_custom_headers="Authorization: Bearer ${token}"
+          use_auth_token="true"
+
+          model_opus="$INPUT_ZAI_OPUS_MODEL"
+          if [ -z "$model_opus" ]; then
+            model_opus="${ZAI_OPUS_MODEL:-glm-5.2[1m]}"
+          fi
+
+          model_sonnet="$INPUT_ZAI_SONNET_MODEL"
+          if [ -z "$model_sonnet" ]; then
+            model_sonnet="${ZAI_SONNET_MODEL:-glm-5.2[1m]}"
+          fi
+
+          model_flash="$INPUT_ZAI_HAIKU_MODEL"
+          if [ -z "$model_flash" ]; then
+            model_flash="${ZAI_HAIKU_MODEL:-glm-4.5-air}"
+          fi
+
+          base_url="$INPUT_ZAI_BASE_URL"
+          if [ -z "$base_url" ]; then
+            base_url="${ZAI_BASE_URL:-https://api.z.ai/api/anthropic}"
+          fi
+
+          effort_level="${CLAUDE_CODE_EFFORT_LEVEL:-max}"
+          api_timeout_ms="${API_TIMEOUT_MS:-3000000}"
+          disable_nonessential_traffic="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
         else
           token="$claude_oauth_token_input"
           if [ -z "$token" ]; then
@@ -374,6 +450,8 @@ runs:
             echo "::error::DeepSeek provider requires deepseek-api-key or DEEPSEEK_API_KEY."
           elif [ "$provider" = "kimi" ]; then
             echo "::error::Kimi provider requires kimi-api-key, KIMI_API_KEY, MOONSHOT_API_KEY, or ANTHROPIC_AUTH_TOKEN."
+          elif [ "$provider" = "zai" ]; then
+            echo "::error::Z.AI provider requires zai-api-key, ZAI_API_KEY, Z_AI_API_KEY, or GLM_API_KEY."
           else
             echo "::error::Anthropic provider requires claude-oauth-token, anthropic-api-key, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_API_KEY."
           fi
@@ -479,9 +557,9 @@ runs:
             ;;
         esac
 
-        # DeepSeek / Kimi: fill every Claude Code model-tier env so background
-        # and sub-agent calls don't fall back to Anthropic model names the
-        # endpoint rejects. Auth is ANTHROPIC_AUTH_TOKEN (Bearer).
+        # Compatible providers: fill every Claude Code model-tier env so
+        # background/sub-agent calls don't fall back to Anthropic model names.
+        # Auth is ANTHROPIC_AUTH_TOKEN (Bearer).
         default_opus_model=""
         default_sonnet_model=""
         default_haiku_model=""
@@ -515,6 +593,16 @@ runs:
                 ;;
             esac
           fi
+        elif [ "$provider" = "zai" ]; then
+          # https://docs.z.ai/devpack/tool/claude
+          # https://docs.z.ai/devpack/latest-model
+          default_opus_model="$model_opus"
+          default_sonnet_model="$model_sonnet"
+          default_haiku_model="$model_flash"
+          default_fable_model="$model_flash"
+          subagent_model="$model_flash"
+          # Z.AI docs use 1000000 (not 1048576) for the 1M compact window.
+          auto_compact_window="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-1000000}"
         fi
 
         write_output claude_code_oauth_token "$claude_code_oauth_token"
@@ -534,6 +622,8 @@ runs:
         write_output subagent_model "$subagent_model"
         write_output auto_compact_window "$auto_compact_window"
         write_output effort_level "$effort_level"
+        write_output api_timeout_ms "$api_timeout_ms"
+        write_output disable_nonessential_traffic "$disable_nonessential_traffic"
         write_output allowed_bots "$allowed_bots"
         write_output branch_name_template "$branch_name_template"
         write_output bot_id "$bot_id"
@@ -583,8 +673,8 @@ runs:
           --model ${{ steps.resolve.outputs.model }}
           ${{ steps.resolve.outputs.claude_args }}
 
-    # DeepSeek / Kimi need ANTHROPIC_AUTH_TOKEN (+ Bearer header) and every
-    # model-tier env filled so sub-agents don't request Anthropic model names.
+    # DeepSeek / Kimi / Z.AI need ANTHROPIC_AUTH_TOKEN (+ Bearer header) and
+    # every model-tier env filled so sub-agents don't request Anthropic names.
     # Kept as a separate step so those vars are never set empty for Anthropic.
     - name: Run Claude Code (compatible provider)
       if: steps.resolve.outputs.use_auth_token == 'true'
@@ -600,6 +690,8 @@ runs:
         CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.resolve.outputs.subagent_model }}
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: ${{ steps.resolve.outputs.auto_compact_window }}
         CLAUDE_CODE_EFFORT_LEVEL: ${{ steps.resolve.outputs.effort_level }}
+        API_TIMEOUT_MS: ${{ steps.resolve.outputs.api_timeout_ms }}
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ steps.resolve.outputs.disable_nonessential_traffic }}
       with:
         # Required by claude-code-action validation; real auth is AUTH_TOKEN.
         anthropic_api_key: ${{ steps.resolve.outputs.anthropic_api_key }}

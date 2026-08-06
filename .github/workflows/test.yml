@@ -50,3 +50,58 @@ jobs:
           [ "$got" = "Edit,Read,Bash(make *)" ] || { echo "file map wrong: $got"; exit 1; }
 
           echo "preset resolver OK"
+
+  provider-resolver:
+    name: kimi / deepseek provider defaults
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve provider defaults like the action does
+        run: |
+          set -euo pipefail
+
+          resolve_kimi() {
+            local provider="${1:-kimi}"
+            local model_tier="${2:-opus}"
+            local kimi_opus="${3-}"
+            local kimi_sonnet="${4-}"
+            local model_name
+
+            provider="${provider,,}"
+            if [ "$provider" = "moonshot" ]; then
+              provider="kimi"
+            fi
+            [ "$provider" = "kimi" ] || { echo "expected kimi, got $provider"; return 1; }
+
+            local model_opus="${kimi_opus:-kimi-k3[1m]}"
+            local model_sonnet="${kimi_sonnet:-kimi-k3[1m]}"
+            case "$model_tier" in
+              sonnet) model_name="$model_sonnet" ;;
+              *) model_name="$model_opus" ;;
+            esac
+
+            local auto_compact
+            case "$model_name" in
+              *k2.7*|*k2.6*) auto_compact="262144" ;;
+              *) auto_compact="1048576" ;;
+            esac
+
+            printf '%s %s %s\n' "$provider" "$model_name" "$auto_compact"
+          }
+
+          # Default kimi-k3[1m] + 1M compact window.
+          got="$(resolve_kimi kimi opus)"
+          [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "kimi default: $got"; exit 1; }
+
+          # moonshot alias.
+          got="$(resolve_kimi moonshot opus)"
+          [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "moonshot alias: $got"; exit 1; }
+
+          # High-speed / k2.7 uses 256K compact window.
+          got="$(resolve_kimi kimi opus kimi-k2.7-code-highspeed kimi-k2.7-code-highspeed)"
+          [ "$got" = "kimi kimi-k2.7-code-highspeed 262144" ] || { echo "k2.7 compact: $got"; exit 1; }
+
+          # Sonnet tier picks the sonnet model input.
+          got="$(resolve_kimi kimi sonnet kimi-k3[1m] kimi-k2.6)"
+          [ "$got" = "kimi kimi-k2.6 262144" ] || { echo "sonnet tier: $got"; exit 1; }
+
+          echo "provider resolver OK"

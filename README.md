@@ -52,19 +52,37 @@ and talks to any **Anthropic-compatible** API.
 ```
 
 ```yaml
-# Kimi / Moonshot — or any Anthropic-compatible endpoint — via base-url override
+# Kimi / Moonshot (Anthropic-compatible endpoint; see
+# https://platform.kimi.ai/docs/guide/claude-code-kimi)
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: kimi              # moonshot is accepted as an alias
+    kimi-api-key: ${{ secrets.KIMI_API_KEY }}
+    # defaults: base https://api.moonshot.ai/anthropic, model kimi-k3[1m]
+    prompt: 'Fix the failing build.'
+```
+
+```yaml
+# Any other Anthropic-compatible endpoint via base-url override
 - uses: LionSR/agent-ci-actions@v1
   with:
     provider: anthropic
-    anthropic-base-url: https://api.moonshot.ai/anthropic
-    anthropic-api-key: ${{ secrets.MOONSHOT_API_KEY }}
-    claude-opus-model: kimi-k2-0905-preview   # the model for the opus tier
+    anthropic-base-url: https://example.compat/anthropic
+    anthropic-api-key: ${{ secrets.COMPAT_API_KEY }}
+    claude-opus-model: my-compat-model
     prompt: 'Fix the failing build.'
 ```
 
 `model-tier` (`opus` / `sonnet`) picks between the opus- and sonnet-tier model inputs,
 so one workflow can dial cost/quality per call. Tokens and model names also fall back to
-the matching env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `DEEPSEEK_API_KEY`, `CLAUDE_OPUS_MODEL`, …).
+the matching env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `DEEPSEEK_API_KEY`, `KIMI_API_KEY` /
+`MOONSHOT_API_KEY` / `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_OPUS_MODEL`, `KIMI_OPUS_MODEL`, …).
+
+For `provider: kimi` the action also sets the Claude Code env vars Kimi requires
+(`ANTHROPIC_AUTH_TOKEN`, all `ANTHROPIC_DEFAULT_*_MODEL` tiers,
+`CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`,
+`CLAUDE_CODE_EFFORT_LEVEL=max`) so background and sub-agent calls do not fall back to
+Anthropic model names.
 
 ## Tool presets are caller-supplied
 

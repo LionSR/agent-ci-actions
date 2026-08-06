@@ -66,11 +66,16 @@ inputs:
     required: false
     default: ''
   kimi-opus-model:
-    description: 'Kimi model name for Opus-tier runs'
+    description: >-
+      Kimi model for Opus-tier runs. Claude Code IDs: kimi-k3[1m] (default),
+      kimi-k2.7-code, kimi-k2.7-code-highspeed, kimi-k2.6. Do not use deprecated
+      kimi-k2-*-preview IDs.
     required: false
     default: ''
   kimi-sonnet-model:
-    description: 'Kimi model name for Sonnet-tier runs'
+    description: >-
+      Kimi model for Sonnet-tier runs. Same IDs as kimi-opus-model; default
+      kimi-k3[1m]. Prefer kimi-k2.7-code for cheaper/faster coding CI.
     required: false
     default: ''
   model-tier:
@@ -468,10 +473,11 @@ runs:
           auto_compact_window="${CLAUDE_CODE_AUTO_COMPACT_WINDOW-}"
           if [ -z "$auto_compact_window" ]; then
             case "$model" in
-              *k2.7*|*k2.6*)
+              *k2.7*|*k2.6*|*k2.5*)
                 auto_compact_window="262144"
                 ;;
               *)
+                # kimi-k3 / kimi-k3[1m] and unknown ids → 1M (Claude Code guide).
                 auto_compact_window="1048576"
                 ;;
             esac

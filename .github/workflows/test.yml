@@ -81,7 +81,7 @@ jobs:
 
             local auto_compact
             case "$model_name" in
-              *k2.7*|*k2.6*) auto_compact="262144" ;;
+              *k2.7*|*k2.6*|*k2.5*) auto_compact="262144" ;;
               *) auto_compact="1048576" ;;
             esac
 
@@ -91,6 +91,10 @@ jobs:
           # Default kimi-k3[1m] + 1M compact window.
           got="$(resolve_kimi kimi opus)"
           [ "$got" = "kimi kimi-k3[1m] 1048576" ] || { echo "kimi default: $got"; exit 1; }
+
+          # Plain API id kimi-k3 also gets 1M.
+          got="$(resolve_kimi kimi opus kimi-k3 kimi-k3)"
+          [ "$got" = "kimi kimi-k3 1048576" ] || { echo "kimi-k3 compact: $got"; exit 1; }
 
           # moonshot alias.
           got="$(resolve_kimi moonshot opus)"
@@ -103,5 +107,9 @@ jobs:
           # Sonnet tier picks the sonnet model input.
           got="$(resolve_kimi kimi sonnet kimi-k3[1m] kimi-k2.6)"
           [ "$got" = "kimi kimi-k2.6 262144" ] || { echo "sonnet tier: $got"; exit 1; }
+
+          # Coding model also uses the 256K compact window.
+          got="$(resolve_kimi kimi opus kimi-k2.7-code kimi-k2.7-code)"
+          [ "$got" = "kimi kimi-k2.7-code 262144" ] || { echo "k2.7-code compact: $got"; exit 1; }
 
           echo "provider resolver OK"

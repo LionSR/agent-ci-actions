@@ -84,6 +84,36 @@ For `provider: kimi` the action also sets the Claude Code env vars Kimi requires
 `CLAUDE_CODE_EFFORT_LEVEL=max`) so background and sub-agent calls do not fall back to
 Anthropic model names.
 
+### Kimi models (Claude Code)
+
+IDs for the Anthropic-compatible endpoint — see [Model List](https://platform.kimi.ai/docs/models)
+and [Use Kimi in Claude Code](https://platform.kimi.ai/docs/guide/claude-code-kimi):
+
+| Model | Context | Notes |
+| --- | --- | --- |
+| `kimi-k3[1m]` | 1M | **Default.** Flagship; Claude Code spelling of `kimi-k3`. |
+| `kimi-k2.7-code` | 256K | Dedicated coding model; thinking always on. |
+| `kimi-k2.7-code-highspeed` | 256K | Same as `kimi-k2.7-code`, ~5–6× faster output. |
+| `kimi-k2.6` | 256K | Thinking optional; good for latency-sensitive tasks. |
+
+Compact window is set automatically: `1048576` for `kimi-k3*`, `262144` for `k2.7` / `k2.6`.
+Override with `kimi-opus-model` / `kimi-sonnet-model` (or `KIMI_OPUS_MODEL` / `KIMI_SONNET_MODEL`).
+
+**Deprecated — do not use:** `kimi-k2-0905-preview`, other `kimi-k2-*-preview` /
+`kimi-k2-thinking*` IDs (sunset May 25, 2026). `kimi-k2.5` and `moonshot-v1*` are
+being removed for new accounts.
+
+```yaml
+# Cheaper/faster coding CI on the sonnet tier
+- uses: LionSR/agent-ci-actions@v1
+  with:
+    provider: kimi
+    kimi-api-key: ${{ secrets.KIMI_API_KEY }}
+    model-tier: sonnet
+    kimi-sonnet-model: kimi-k2.7-code
+    prompt: 'Fix the failing build.'
+```
+
 ## Tool presets are caller-supplied
 
 The action ships **no** tool allowlists. Keep your presets in a checked-in JSON file and
